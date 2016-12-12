@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Parcell - Select Project</title>
+  <meta charset="utf-8">
+  <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
+  <link rel="stylesheet" type="text/css" href="lib/jk-js/lib/bootstrap/css/bootstrap.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/font-awesome/css/font-awesome.min.css">
+  <script src="lib/jk-js/lib/d3/d3.min.js" charset="utf-8"></script>
+  <script src="lib/jk-js/jkjs/util.js" charset="utf-8"></script>
+  <script src="js/worker.js" charset="utf-8"></script>
+  <script src="js/list.js" charset="utf-8"></script>
+  <script src="js/net.js" charset="utf-8"></script>
+  <style>
+  .base_container {
+    display: inline-block;
+    padding: 0;
+    margin: 0;
+  }
+
+  .list_ul {
+    padding: 0;
+    margin: 0;
+  }
+
+  .list_li {
+    list-style-type: none;
+    padding: 5px;
+    white-space: nowrap;
+    display: block;
+  }
+
+  .list_li:hover {
+    background: #e7e7e7;
+  }
+
+  .list_li_sel, .list_li_sel:hover {
+    background: rgb(55,126,184);
+    font-weight: bold;
+    color: white;
+  }
+
+  .clickable {
+    cursor: pointer;
+  }
+
+  .deactivated {
+    opacity: 0.3;
+  }
+  </style>
+</head>
+<body onload="start()">
+<div id="base" class="base_container">
+  <div>
+    <h4>
+      Select project:
+      <span style="float: right;" id="status"></span>
+      <div style="clear: both;"></div>
+    </h4>
+    <div id="main"></div>
+  </div>
+</div>
+<script>
+function start() {
+  var urlArgs = jkjs.util.getQueryStrings();
+  d3.select("#base").style({
+    "display": "flex",
+    "justify-content": "center",
+    "align-items": "center",
+    "height": "100vh",
+  });
+  var mainDiv = d3.select("#main");
+
+  var net = new Net(d3.select("#status"));
+  var work = new quick_server.Worker();
+  work.status(function(req) {
+    net.otherReq(req);
+  });
+
+  function choose(project) {
+    net.returnProject(urlArgs, project);
+  } // choose
+
+  function projectSelect(mainDiv, onClick) {
+    var textW = 400;
+    var div = mainDiv.append("div").style({
+      "height": "40vh",
+      "width": textW + "px",
+      "border": "1px silver solid",
+    });
+    var list = new List(div);
+    list.onClick(function(el) {
+      var project = el["project"];
+      onClick(project);
+    });
+    list.hasId(function(el, project) {
+      return el["project"] === project;
+    });
+    list.onEnter(function(sel, get) {
+      sel.append("span").classed("project_text", true).style({
+        "overflow": "hidden",
+        "text-overflow": "ellipsis",
+        "width": textW + "px",
+      });
+    });
+    list.onUpdate(function(sel, get) {
+      sel.selectAll(".project_text").text(function(ix) {
+        var el = get(ix);
+        return el["project"];
+      }).attr({
+        "title": function(ix) {
+          var el = get(ix);
+          return el["project"];
+        },
+      });
+    });
+    return list;
+  } // projectSelect
+
+  var list = projectSelect(mainDiv, choose);
+  net.get("projects", "projects/", {
+  }, function(data) {
+    list.elements(data["projects"].map(function(p) {
+      return {
+        "project": p,
+      };
+    }));
+    list.update();
+  });
+} // start
+</script>
+
+</body>
+</html>

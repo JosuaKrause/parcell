@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Parcell - Overview</title>
+  <meta charset="utf-8">
+  <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
+  <link rel="stylesheet" type="text/css" href="lib/jk-js/lib/bootstrap/css/bootstrap.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/font-awesome/css/font-awesome.min.css">
+  <script src="lib/jk-js/lib/d3/d3.min.js" charset="utf-8"></script>
+  <script src="lib/jk-js/jkjs/util.js" charset="utf-8"></script>
+  <script src="js/worker.js" charset="utf-8"></script>
+  <script src="js/list.js" charset="utf-8"></script>
+  <script src="js/net.js" charset="utf-8"></script>
+  <style>
+  .list_ul {
+    padding: 0;
+    margin: 0;
+  }
+
+  .list_li {
+    list-style-type: none;
+    padding: 5px;
+    white-space: nowrap;
+    display: block;
+  }
+
+  .list_li:hover {
+    background: #e7e7e7;
+  }
+
+  .list_li_sel, .list_li_sel:hover {
+    background: rgb(55,126,184);
+    font-weight: bold;
+    color: white;
+  }
+
+  .clickable {
+    cursor: pointer;
+  }
+
+  .project_select {
+    cursor: pointer;
+  }
+
+  .project_select:hover {
+    color: #a1a1a1;
+  }
+
+  .deactivated {
+    opacity: 0.3;
+  }
+
+  .button_container {
+    position: relative;
+  }
+
+  .button_top_right {
+    position: absolute;
+    top: -1px;
+    right: -1px;
+    padding: 3px;
+    color: #d1d1d1;
+    border: solid 1px #e3e3e3;
+    border-radius: 3px;
+    border-top-left-radius: 0;
+    border-bottom-right-radius: 0;
+    background: white;
+    cursor: pointer;
+    box-shadow: 0 1px 1px rgba(0,0,0,.05);
+  }
+
+  .button_top_right:hover {
+    color: black;
+    background: #e7e7e7;
+  }
+  </style>
+</head>
+<body onload="start()">
+<div class="container">
+  <div class="row" style="margin-top: 5px">
+    <div class="col-md-4">
+      <div class="panel panel-default">
+        <div class="panel-heading">
+          <h3 class="panel-title" style="clear: both;">
+            Project <span id="project"></span>
+            <span id="project_select" style="float: right;" class="project_select">
+              <i class="fa fa-ellipsis-h"></i>
+            </span>
+          </h3>
+        </div>
+        <div class="panel-body">
+          <div style="clear: both;">
+            <span style="float: left;">Environment:</span>
+            <code style="float: right;" id="env"></code>
+          </div>
+          <div style="clear: both;">
+            <span style="float: left;">Path:</span>
+            <code style="float: right;" id="path"></code>
+          </div>
+          <div style="clear: both;">
+            <span style="float: left;">Cmd.:</span>
+            <code style="float: right;" id="cmd"></code>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <span id="status"></span>
+    </div>
+  </div>
+  <div class="row">
+    <div class="col-md-4">
+      <div class="panel panel-default">
+        <div class="panel-heading">
+          <h3 class="panel-title">Servers</h3>
+        </div>
+        <div class="panel-body">
+          <div id="server_list"></div>
+          <div class="well well-sm button_container" id="server_info" style="display: none; margin-top: 5px;">
+            <div id="server_close" class="button_top_right">
+              <i class="fa fa-times fa-1"></i>
+            </div>
+            <div style="clear: both;">
+              <span>ID:</span>
+              <code id="server_id"></code>
+            </div>
+            <div style="clear: both;">
+              <span style="float: left;">Hostname:</span>
+              <code style="float: right;" id="server_name"></code>
+            </div>
+            <div class="progress" style="width: 100%; background: white;">
+              <div class="progress-bar" id="cpu_outer" style="width: 0;">
+                <span class="sr-only" id="cpu_inner">0%</span>
+              </div>
+              CPU
+            </div>
+            <div id="version_list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="panel panel-default">
+        <div class="panel-heading">
+          <h3 class="panel-title">Jobs</h3>
+        </div>
+        <div class="panel-body">
+          <button id="job_submit" type="button" class="btn btn-default">Submit</button>
+          <div id="job_list"></div>
+          <div class="well well-sm button_container" id="job_info" style="display: none; margin-top: 5px;">
+            <div id="job_close" class="button_top_right">
+              <i class="fa fa-times fa-1"></i>
+            </div>
+            <div style="clear: both;">
+              <span>ID:</span>
+              <code id="job_id"></code>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+function start() {
+  var urlArgs = jkjs.util.getQueryStrings();
+  var mainDiv = d3.select("#main");
+
+  var _fmt = d3.format(".3g");
+  var fmt = function(v) {
+    if(Math.floor(v) === v) {
+      return "" + v;
+    }
+    return _fmt(v);
+  };
+
+  var net = new Net(d3.select("#status"));
+  var work = new quick_server.Worker();
+  work.status(function(req) {
+    net.otherReq(req);
+  });
+  var project = net.getProject(urlArgs);
+
+  d3.select("#project_select").on("click", function() {
+    urlArgs["project"] = null;
+    net.getProject(urlArgs);
+  });
+
+  // Project Info
+
+  net.get("project_info", "project_info/", {
+    "project": project,
+  }, function(data) {
+    d3.select("#project").text(data["project"]);
+    d3.select("#path").text(data["path"]);
+    d3.select("#cmd").text(data["command"]);
+    d3.select("#env").text(data["env"]);
+  });
+
+  // Version List
+  var versionList = new List(d3.select("#version_list").style({
+    "height": "75px",
+  }));
+  versionList.hasId(function(el, version) {
+    return el["key"] === version;
+  });
+  versionList.onEnter(function(sel, get) {
+    sel.append("span").classed("version_key", true).style({
+      "overflow": "hidden",
+      "text-overflow": "ellipsis",
+      "margin-right": "5px",
+      "float": "left",
+    });
+    sel.append("span").style({
+      "float": "right",
+    }).append("code").classed("version_value", true);
+    sel.append("div").style({
+      "clear": "both",
+    });
+  });
+  versionList.onUpdate(function(sel, get) {
+    sel.selectAll(".version_key").text(function(ix) {
+      var v = get(ix);
+      return v["key"];
+    }).attr({
+      "title": function(ix) {
+        var v = get(ix);
+        return v["key"];
+      },
+    });
+    sel.selectAll(".version_value").text(function(ix) {
+      var v = get(ix);
+      return v["value"];
+    });
+  });
+
+  // Server List
+
+  d3.select("#server_close").on("click", function() {
+    serverList.selectId(null);
+    serverList.update();
+    d3.select("#server_info").style({
+      "display": "none",
+    });
+  });
+
+  function selectServer(server) {
+    serverList.selectId(server);
+    serverList.update();
+    work.post("server_stats", "stats/", {
+      "project": project,
+      "server": server,
+    }, function(data) {
+      var stats = data["stats"];
+      d3.select("#server_id").text(data["server"]);
+      d3.select("#server_name").text(stats["name"]);
+      var cpu = +stats["cpu"];
+      var cpuColor;
+      if(Number.isNaN(cpu)) {
+        cpuColor = 3;
+        cpu = 100;
+      } else if(cpu > 75) {
+        cpuColor = 2;
+      } else if(cpu > 50) {
+        cpuColor = 1;
+      } else {
+        cpuColor = 0;
+      }
+      d3.select("#cpu_outer").classed({
+        "progress-bar-success": cpuColor === 0,
+        "progress-bar-warning": cpuColor === 1,
+        "progress-bar-danger": cpuColor === 2,
+        "progress-bar-striped": cpuColor === 3,
+      }).style({
+        "width": cpu + "%",
+      });
+      d3.select("#cpu_inner").text(cpu + "%");
+      versionList.elements(stats["versions"].map(function(v) {
+        return {
+          "key": v[0],
+          "value": v[1],
+        };
+      }));
+      versionList.update();
+      d3.select("#server_info").style({
+        "display": null,
+      });
+    });
+  } // selectServer
+
+  var serverList = new List(d3.select("#server_list").style({
+    "height": "100px",
+  }));
+  serverList.hasId(function(el, server) {
+    return el["server"] === server;
+  });
+  serverList.onClick(function(s) {
+    var server = s["server"];
+    selectServer(server);
+  });
+  serverList.onEnter(function(sel, get) {
+    sel.append("span").classed("server_text", true).style({
+      "overflow": "hidden",
+      "text-overflow": "ellipsis",
+    });
+  });
+  serverList.onUpdate(function(sel, get) {
+    sel.selectAll(".server_text").text(function(ix) {
+      var s = get(ix);
+      return s["server"];
+    }).attr({
+      "title": function(ix) {
+        var s = get(ix);
+        return s["server"];
+      },
+    });
+  });
+
+  net.get("servers", "servers", {
+    "project": project,
+  }, function(data) {
+    serverList.elements(data["servers"].map(function(s) {
+      return {
+        "server": s,
+      };
+    }));
+    serverList.update();
+  });
+
+  // Job List
+
+  d3.select("#job_close").on("click", function() {
+    jobList.selectId(null);
+    jobList.update();
+    d3.select("#job_info").style({
+      "display": "none",
+    });
+  });
+
+  function selectJob(job) {
+    jobList.selectId(job);
+    jobList.update();
+    var j = jobList.getElement(job);
+    if(!j) return;
+    work.post("job_status", "status/", {
+      "project": project,
+      "server": j["server"],
+      "job": j["job"],
+    }, function(data) {
+      d3.select("#job_id").text(data["job"]);
+      d3.select("#job_info").style({
+        "display": null,
+      });
+    });
+  } // selectJob
+
+  var jobList = new List(d3.select("#job_list").style({
+    "height": "100px",
+  }));
+  jobList.hasId(function(el, job) {
+    return el["job"] === job;
+  });
+  jobList.onClick(function(j) {
+    var job = j["job"];
+    selectJob(job);
+  });
+  jobList.onEnter(function(sel, get) {
+    sel.append("span").classed("job_text", true).style({
+      "overflow": "hidden",
+      "text-overflow": "ellipsis",
+    });
+  });
+  jobList.onUpdate(function(sel, get) {
+    sel.selectAll(".job_text").text(function(ix) {
+      var j = get(ix);
+      console.log(j);
+      return j["job"] + "@" + j["server"];
+    }).attr({
+      "title": function(ix) {
+        var j = get(ix);
+        return j["job"] + "@" + j["server"];
+      },
+    });
+  });
+
+  function checkJobs() {
+    work.post("jobs", "jobs/", {
+      "project": project,
+    }, function(data) {
+      jobList.elements(data["jobs"].map(function(j) {
+        console.log(j);
+        return {
+          "server": j[0],
+          "job": j[1],
+          "info": j[2],
+        };
+      }));
+      jobList.update();
+    });
+  } // checkJobs
+
+  checkJobs();
+
+  function clickSubmit() {
+    d3.select("#job_submit").on("click", null).classed("disabled", true);
+    work.post("best", "best_server/", {
+      "project": project,
+    }, function(best) {
+      var server = best["server"];
+      console.log("best server:", best["server"]);
+      work.post("submit", "start/", {
+        "project": project,
+        "server": server,
+      }, function(data) {
+        console.log("start job:", data["server"], data["job"]);
+        checkJobs();
+        d3.select("#job_submit").on("click", clickSubmit).classed("disabled", false);
+      });
+    });
+  } // clickSubmit
+
+  d3.select("#job_submit").on("click", clickSubmit);
+} // start
+</script>
+
+</body>
+</html>
