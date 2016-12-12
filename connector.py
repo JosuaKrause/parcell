@@ -137,7 +137,7 @@ def _get_remote(server, needs_pw, prompt):
     return RemoteQueue(server, Connector.DIR_REMOTE_TEJ)
 
 class Connector(object):
-    DIR_REMOTE_TEJ = ".parcell"
+    DIR_REMOTE_TEJ = "~/.parcell"
     DIR_ENV = "env"
     DIR_SERVER = "server"
     DIR_PROJECT = "project"
