@@ -7,9 +7,8 @@ import os
 import sys
 import logging
 import argparse
-import threading
 
-from connector import Connector, get_envs, get_servers, get_projects
+from connector import get_envs, get_servers, get_projects, get_connector, init_passwords
 
 from quick_server import create_server, msg, setup_restart
 from quick_cache import QuickCache
@@ -29,18 +28,6 @@ def get_server(addr, port, cache):
 
     server.link_worker_js(prefix + '/js/worker.js')
     server.cache = cache
-
-    lock = threading.RLock()
-
-    connectors = {}
-    def get_connector(project):
-        try:
-            lock.acquire()
-            if project not in connectors:
-                connectors[project] = Connector(project, False)
-            return connectors[project]
-        finally:
-            lock.release()
 
     def optional(key, args, default=None):
         return args[key] if key in args else default
@@ -100,18 +87,14 @@ def get_server(addr, port, cache):
 
     @server.json_worker(prefix + '/start')
     def json_start(args):
-        try:
-            lock.acquire()
-            project = args["project"]
-            server = args["server"]
-            conn = get_connector(project)
-            return {
-                "project": project,
-                "server": server,
-                "job": conn.submit_job(server),
-            }
-        finally:
-            lock.release()
+        project = args["project"]
+        server = args["server"]
+        conn = get_connector(project)
+        return {
+            "project": project,
+            "server": server,
+            "job": conn.submit_job(server),
+        }
 
     @server.json_worker(prefix + '/jobs')
     def json_jobs(args):
@@ -173,8 +156,11 @@ if __name__ == '__main__':
         with open("cache_path.txt") as cp:
             cache_temp = cp.read().strip()
 
-    server = get_server(addr, port, QuickCache(quota=cache_quota, ram_quota=ram_quota, temp=cache_temp, warnings=msg))
     msg("{0}", " ".join(sys.argv))
+    msg("initializing passwords -- please type as prompted")
+    init_passwords()
+
+    server = get_server(addr, port, QuickCache(quota=cache_quota, ram_quota=ram_quota, temp=cache_temp, warnings=msg))
     msg("starting server at {0}:{1}", addr if addr else 'localhost', port)
     server.serve_forever()
     msg("shutting down..")

@@ -11,6 +11,7 @@ import math
 import getpass
 import logging
 import argparse
+import threading
 
 from tej import RemoteQueue, QueueDoesntExist, JobNotFound
 
@@ -87,6 +88,12 @@ def _read_server(f_in):
         raise ValueError("password should not be stored in config! {0}".format(f_in))
     return res
 
+def _get_server(s):
+    with Connector._MAIN_LOCK:
+        if s not in Connector._ALL_SERVERS:
+            Connector._ALL_SERVERS[s] = _read_server(s)
+        return Connector._ALL_SERVERS[s]
+
 def _write_server(f_out, server):
     obj = {}
     for (k, v) in server.items():
@@ -103,11 +110,10 @@ def _read_project(f_in):
     command = pr["cmd"]
     env = (pr["env"], _read_env(pr["env"]))
     servers = pr["servers"]
-    s_conn = dict([ (s, _read_server(s)) for s in servers ])
-    needs_pw = bool(pr["pw"])
-    return (path_local, command, env, servers, s_conn, needs_pw)
+    s_conn = dict([ (s, _get_server(s)) for s in servers ])
+    return (path_local, command, env, servers, s_conn)
 
-def _write_project(f_out, path_local, command, env, servers, s_conn, needs_pw):
+def _write_project(f_out, path_local, command, env, servers, s_conn):
     e_name, e_obj = env
     _write_env(e_name, e_obj)
 
@@ -120,21 +126,43 @@ def _write_project(f_out, path_local, command, env, servers, s_conn, needs_pw):
         "cmd": command,
         "env": e_name,
         "servers": [ get_server(s) for s in servers ],
-        "pw": needs_pw,
     }
 
 def _ask_password(user, address):
     print("{0}@{1} ".format(user, address), file=sys.stdout)
     return getpass.getpass()
 
-def _get_remote(server, needs_pw, prompt):
-    if needs_pw and "password" not in server:
-        if prompt:
-            server["password"] = _ask_password(server["username"], server["hostname"])
-        else:
-            with open(Connector.PW_FILE, 'rb') as f:
-                server["password"] = f.read().strip()
-    return RemoteQueue(server, Connector.DIR_REMOTE_TEJ)
+def _get_remote(s):
+    with Connector._MAIN_LOCK:
+        if s not in Connector._ALL_REMOTES:
+            server = _get_server(s)
+            if server["needs_pw"] and "password" not in server:
+                raise ValueError("no password found in {0}".format(server))
+            Connector._ALL_REMOTES[s] = RemoteQueue(dict([
+                it for it in server.items() if it[0] not in Connector.SERVER_SKIP_KEYS
+            ]), Connector.DIR_REMOTE_TEJ)
+        return Connector._ALL_REMOTES[s]
+
+def _test_connection(s):
+    conn = _get_remote(s)
+    conn.check_call("hostname")
+
+def init_passwords():
+    with Connector._MAIN_LOCK:
+        for s in get_servers():
+            server = _get_server(s)
+            if os.path.exists(Connector.PW_FILE):
+                with open(Connector.PW_FILE, 'rb') as f:
+                    server["password"] = f.read().strip()
+            else:
+                server["password"] = _ask_password(server["username"], server["hostname"])
+            _test_connection(s)
+
+def get_connector(project):
+    with Connector._MAIN_LOCK:
+        if project not in Connector._ALL_CONNECTORS:
+            Connector(project) # adds itself to the list
+        return Connector._ALL_CONNECTORS[project]
 
 class Connector(object):
     DIR_REMOTE_TEJ = "~/.parcell"
@@ -148,11 +176,20 @@ class Connector(object):
     DEFAULT_REGEX = "(.*)"
     DEFAULT_LINE = 0
 
-    def __init__(self, project, prompt):
-        project = _read_project(project)
-        self._path_local, self._command, self._env, self._servers, self._s_conn, self._needs_pw = project
-        self._prompt = prompt
-        self._rqs = dict([ (s, _get_remote(self._s_conn[s], self._needs_pw, self._prompt)) for s in self._servers ])
+    SERVER_SKIP_KEYS = frozenset([
+        "needs_pw",
+    ])
+    _ALL_SERVERS = {}
+    _ALL_REMOTES = {}
+    _ALL_CONNECTORS = {}
+    _MAIN_LOCK = threading.RLock()
+
+    def __init__(self, p):
+        self._lock = threading.RLock()
+        project = _read_project(p)
+        self._path_local, self._command, self._env, self._servers, self._s_conn = project
+        self._rqs = dict([ (s, _get_remote(s)) for s in self._servers ])
+        Connector._ALL_CONNECTORS[p] = self
 
     def get_path(self):
         return self._path_local
@@ -233,12 +270,13 @@ class Connector(object):
         }
 
     def submit_job(self, s):
-        rq = self._rqs[s]
+        with self._lock:
+            rq = self._rqs[s]
 
-        with open(os.path.join(self._path_local, Connector.SCRIPT_FILE), 'wb') as f:
-            print(self._command, file=f)
+            with open(os.path.join(self._path_local, Connector.SCRIPT_FILE), 'wb') as f:
+                print(self._command, file=f)
 
-        return rq.submit(None, self._path_local, Connector.SCRIPT_FILE)
+            return rq.submit(None, self._path_local, Connector.SCRIPT_FILE)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Parcell Connector')
@@ -248,7 +286,8 @@ if __name__ == '__main__':
 
     logging.basicConfig(level=(logging.INFO if args.v else logging.CRITICAL))
 
-    conn = Connector(args.project, True)
+    init_passwords()
+    conn = Connector(args.project)
 
     for s in conn.get_servers():
         for (k, v) in conn.get_server_stats(s).items():
