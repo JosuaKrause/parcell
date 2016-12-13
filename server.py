@@ -8,10 +8,12 @@ import sys
 import logging
 import argparse
 
-from connector import get_envs, get_servers, get_projects, get_connector, init_passwords
+from connector import get_envs, get_servers, get_projects, get_connector, init_passwords, set_msg
 
 from quick_server import create_server, msg, setup_restart
 from quick_cache import QuickCache
+
+set_msg(msg)
 
 def get_server(addr, port, cache):
     server = create_server((addr, port))

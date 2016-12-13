@@ -7,6 +7,7 @@
   <link rel="stylesheet" type="text/css" href="lib/jk-js/lib/bootstrap/css/bootstrap.min.css">
   <link rel="stylesheet" type="text/css" href="lib/font-awesome/css/font-awesome.min.css">
   <script src="lib/jk-js/lib/d3/d3.min.js" charset="utf-8"></script>
+  <script src="lib/jk-js/jkjs/cell.js" charset="utf-8"></script>
   <script src="lib/jk-js/jkjs/util.js" charset="utf-8"></script>
   <script src="js/worker.js" charset="utf-8"></script>
   <script src="js/list.js" charset="utf-8"></script>
@@ -128,7 +129,7 @@
               <span style="float: left;">Hostname:</span>
               <code style="float: right;" id="server_name"></code>
             </div>
-            <div class="progress" style="width: 100%; background: white;">
+            <div class="progress" id="cpu_frame" style="width: 100%; background: white;">
               <div class="progress-bar" id="cpu_outer" style="width: 0;">
                 <span class="sr-only" id="cpu_inner">0%</span>
               </div>
@@ -236,17 +237,26 @@ function start() {
 
   // Server List
 
-  d3.select("#server_close").on("click", function() {
-    serverList.selectId(null);
-    serverList.update();
-    d3.select("#server_info").style({
-      "display": "none",
-    });
+  var curServer = new jkjs.Cell(urlArgs["server"] || null);
+  curServer.addChangeListener(function() {
+    pushState();
+    selectServer();
   });
 
-  function selectServer(server) {
+  d3.select("#server_close").on("click", function() {
+    curServer.value = null;
+  });
+
+  function selectServer() {
+    var server = curServer.value;
     serverList.selectId(server);
     serverList.update();
+    if(!server) {
+      d3.select("#server_info").style({
+        "display": "none",
+      });
+      return;
+    }
     work.post("server_stats", "stats/", {
       "project": project,
       "server": server,
@@ -273,6 +283,11 @@ function start() {
         "progress-bar-striped": cpuColor === 3,
       }).style({
         "width": cpu + "%",
+      }).attr({
+        "title": cpu + "%",
+      });
+      d3.select("#cpu_frame").attr({
+        "title": cpu + "%",
       });
       d3.select("#cpu_inner").text(cpu + "%");
       versionList.elements(stats["versions"].map(function(v) {
@@ -295,8 +310,7 @@ function start() {
     return el["server"] === server;
   });
   serverList.onClick(function(s) {
-    var server = s["server"];
-    selectServer(server);
+    curServer.value = s["server"];
   });
   serverList.onEnter(function(sel, get) {
     sel.append("span").classed("server_text", true).style({
@@ -325,23 +339,32 @@ function start() {
       };
     }));
     serverList.update();
+    selectServer();
   });
 
   // Job List
 
-  d3.select("#job_close").on("click", function() {
-    jobList.selectId(null);
-    jobList.update();
-    d3.select("#job_info").style({
-      "display": "none",
-    });
+  var curJob = new jkjs.Cell(urlArgs["job"] || null);
+  curJob.addChangeListener(function() {
+    pushState();
+    selectJob();
   });
 
-  function selectJob(job) {
+  d3.select("#job_close").on("click", function() {
+    curJob.value = null;
+  });
+
+  function selectJob() {
+    var job = curJob.value;
     jobList.selectId(job);
     jobList.update();
     var j = jobList.getElement(job);
-    if(!j) return;
+    if(!job || !j) {
+      d3.select("#job_info").style({
+        "display": "none",
+      });
+      return;
+    }
     work.post("job_status", "status/", {
       "project": project,
       "server": j["server"],
@@ -361,8 +384,7 @@ function start() {
     return el["job"] === job;
   });
   jobList.onClick(function(j) {
-    var job = j["job"];
-    selectJob(job);
+    curJob.value = j["job"];
   });
   jobList.onEnter(function(sel, get) {
     sel.append("span").classed("job_text", true).style({
@@ -396,6 +418,7 @@ function start() {
         };
       }));
       jobList.update();
+      selectJob();
     });
   } // checkJobs
 
@@ -420,6 +443,36 @@ function start() {
   } // clickSubmit
 
   d3.select("#job_submit").on("click", clickSubmit);
+
+  function getState() {
+    var s = {
+      "project": project,
+      "server": curServer.value,
+      "job": curJob.value,
+    };
+    return s;
+  } // getState
+
+  function setState(state) {
+    prevState = state;
+    project = state["project"];
+    curServer.value = state["server"];
+    curJob.value = state["job"];
+  } // setState
+
+  var prevState = getState();
+  function pushState() {
+    var state = getState();
+    var same = Object.keys(state).length === Object.keys(prevState) && Object.keys(state).every(function(k) {
+      return k in prevState && prevState[k] === state[k];
+    });
+    if(same) return;
+    history.pushState(state, document.title, net.url(jkjs.util.getOwnURL(), state));
+  } // pushState
+
+  window.onpopstate = function(event) {
+    setState(event.state);
+  };
 } // start
 </script>
 

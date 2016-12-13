@@ -15,6 +15,13 @@ import threading
 
 from tej import RemoteQueue, QueueDoesntExist, JobNotFound
 
+def msg(message, *args, **kwargs):
+    print(message.format(*args, **kwargs), file=sys.stdout)
+
+def set_msg(m):
+    global msg
+    msg = m
+
 def _get_config_list(config):
     if not os.path.exists(config):
         os.makedirs(config)
@@ -144,6 +151,7 @@ def _get_remote(s):
         return Connector._ALL_REMOTES[s]
 
 def _test_connection(s):
+    msg("checking connectivity of {0}", s)
     conn = _get_remote(s)
     conn.check_call("hostname")
 
