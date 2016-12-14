@@ -149,7 +149,7 @@ def _ask_password(user, address):
         Connector._ALL_PWS[pw_id] = res
     return Connector._ALL_PWS[pw_id]
 
-def _ask_for_known_hosts(dest, e):
+def _ask_for_ssh_replay(dest, e):
     msg("SSH connection could not be established due to\n{0}", e)
     msg("Please establish a SSH connection in a *different* terminal using")
     msg("\nssh {0} {1}{2} hostname\n",
@@ -157,7 +157,7 @@ def _ask_for_known_hosts(dest, e):
         "{0}@".format(dest["username"]) if "username" in dest else "",
         dest["hostname"],
         )
-    msg("Press ENTER to continue after a connection was successfully established")
+    msg("Press ENTER to continue after a connection was successfully established to try again")
     raw_input("")
 
 def _setup_tunnel(s, server):
@@ -206,7 +206,7 @@ def _get_remote(s):
                 try:
                     Connector._ALL_REMOTES[s] = TunnelableRemoteQueue(dest, remote_dir, is_tunnel=("tunnel" in server))
                 except (paramiko.SSHException, paramiko.ssh_exception.NoValidConnectionsError) as e:
-                    _ask_for_known_hosts(dest, e)
+                    _ask_for_ssh_replay(dest, e)
         return Connector._ALL_REMOTES[s]
 
 def _test_connection(s):

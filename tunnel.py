@@ -9,8 +9,6 @@ import logging
 import threading
 import subprocess
 
-from StringIO import StringIO
-
 _LOGGER = None
 def logger():
     global _LOGGER
