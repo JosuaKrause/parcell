@@ -11,9 +11,12 @@ import math
 import getpass
 import logging
 import argparse
+import paramiko
 import threading
 
-from tej import RemoteQueue, QueueDoesntExist, JobNotFound
+from tunnel import start_tunnel, check_tunnel
+
+from tej import RemoteQueue, QueueDoesntExist, JobNotFound, parse_ssh_destination
 
 def msg(message, *args, **kwargs):
     print(message.format(*args, **kwargs), file=sys.stdout)
@@ -136,18 +139,60 @@ def _write_project(f_out, path_local, command, env, servers, s_conn):
     }
 
 def _ask_password(user, address):
-    print("{0}@{1} ".format(user, address), file=sys.stdout)
-    return getpass.getpass()
+    pw_id = (user, address)
+    if pw_id not in Connector._ALL_PWS:
+        if os.path.exists(Connector.PW_FILE):
+            with open(Connector.PW_FILE, 'rb') as f:
+                res = f.read().strip()
+        else:
+            res = getpass.getpass("password for {0}@{1}:".format(user, address))
+        Connector._ALL_PWS[pw_id] = res
+    return Connector._ALL_PWS[pw_id]
+
+def _ask_for_known_hosts(dest, e):
+    msg("SSH connection could not be established due to\n{0}", e)
+    msg("Please establish a SSH connection in a *different* terminal using")
+    msg("\nssh {0} {1}{2} hostname\n",
+        "-p {0}".format(dest["port"]) if "port" in dest else "",
+        "{0}@".format(dest["username"]) if "username" in dest else "",
+        dest["hostname"],
+        )
+    msg("Press ENTER to continue after a connection was successfully established")
+    raw_input("")
+
+def _setup_tunnel(s, server):
+    with Connector._MAIN_LOCK:
+        tunnel = parse_ssh_destination(server["tunnel"])
+        if "password" in tunnel:
+            raise ValueError("tunnel password should not be stored in config! {0}@{1}:{2}".format(tunnel["username"], tunnel["hostname"], tunnel["port"]))
+        if server.get("needs_tunnel_pw", False):
+            tunnel["password"] = _ask_password(tunnel["username"], tunnel["hostname"])
+        start_tunnel(s, tunnel, _get_destination_obj(server, False), server["tunnel_port"])
+
+def _get_destination_obj(dest, front):
+    res = dict([
+        it for it in dest.items() if it[0] not in Connector.SERVER_SKIP_KEYS
+    ])
+    if front and "tunnel_port" in dest:
+        res["hostname"] = "127.0.0.1"
+        res["port"] = dest["tunnel_port"]
+    return res
 
 def _get_remote(s):
     with Connector._MAIN_LOCK:
+        server = _get_server(s)
+        if "tunnel" in server and not check_tunnel(s):
+            _setup_tunnel(s, server)
         if s not in Connector._ALL_REMOTES:
-            server = _get_server(s)
-            if server["needs_pw"] and "password" not in server:
+            if server.get("needs_pw", False) and "password" not in server:
                 raise ValueError("no password found in {0}".format(server))
-            Connector._ALL_REMOTES[s] = RemoteQueue(dict([
-                it for it in server.items() if it[0] not in Connector.SERVER_SKIP_KEYS
-            ]), Connector.DIR_REMOTE_TEJ)
+            remote_dir = "{0}_{1}".format(Connector.DIR_REMOTE_TEJ, s)
+            dest = _get_destination_obj(server, True)
+            while s not in Connector._ALL_REMOTES:
+                try:
+                    Connector._ALL_REMOTES[s] = RemoteQueue(dest, remote_dir)
+                except paramiko.SSHException as e:
+                    _ask_for_known_hosts(dest, e)
         return Connector._ALL_REMOTES[s]
 
 def _test_connection(s):
@@ -159,11 +204,7 @@ def init_passwords():
     with Connector._MAIN_LOCK:
         for s in get_servers():
             server = _get_server(s)
-            if os.path.exists(Connector.PW_FILE):
-                with open(Connector.PW_FILE, 'rb') as f:
-                    server["password"] = f.read().strip()
-            else:
-                server["password"] = _ask_password(server["username"], server["hostname"])
+            server["password"] = _ask_password(server["username"], server["hostname"])
             _test_connection(s)
 
 def get_connector(project):
@@ -186,10 +227,14 @@ class Connector(object):
 
     SERVER_SKIP_KEYS = frozenset([
         "needs_pw",
+        "tunnel",
+        "tunnel_port",
+        "needs_tunnel_pw",
     ])
     _ALL_SERVERS = {}
     _ALL_REMOTES = {}
     _ALL_CONNECTORS = {}
+    _ALL_PWS = {}
     _MAIN_LOCK = threading.RLock()
 
     def __init__(self, p):

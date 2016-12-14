@@ -143,10 +143,11 @@ if __name__ == '__main__':
     parser.add_argument('--ram-quota', default=1024, help="set RAM cache quota")
     parser.add_argument('-a', type=str, default="localhost", help="specifies the server address")
     parser.add_argument('-p', type=int, default=8080, help="specifies the server port")
-    parser.add_argument('-v', action='store_true', help="use verbose output")
+    parser.add_argument('-v', '--verbose', action='count', default=1, dest='verbosity', help="augments verbosity level")
     args = parser.parse_args()
 
-    logging.basicConfig(level=(logging.INFO if args.v else logging.CRITICAL))
+    levels = [ logging.CRITICAL, logging.WARNING, logging.INFO, logging.DEBUG ]
+    logging.basicConfig(level=levels[min(args.verbosity, 3)])
 
     addr = args.a
     port = args.p
