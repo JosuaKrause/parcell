@@ -205,7 +205,7 @@ def _get_remote(s):
             while s not in Connector._ALL_REMOTES:
                 try:
                     Connector._ALL_REMOTES[s] = TunnelableRemoteQueue(dest, remote_dir, is_tunnel=("tunnel" in server))
-                except paramiko.SSHException as e:
+                except (paramiko.SSHException, paramiko.ssh_exception.NoValidConnectionsError) as e:
                     _ask_for_known_hosts(dest, e)
         return Connector._ALL_REMOTES[s]
 

@@ -3,24 +3,13 @@
 from __future__ import print_function
 from __future__ import division
 
-import os
-import re
-import sys
-import json
-import math
 import time
-import select
-import socket
 import getpass
 import logging
-import paramiko
 import threading
-try:
-    import SocketServer
-except ImportError:
-    import socketserver as SocketServer
+import subprocess
 
-BUFF_SIZE = 1024
+from StringIO import StringIO
 
 _LOGGER = None
 def logger():
@@ -44,76 +33,34 @@ def check_tunnel(s):
     with _LOCK:
         return s in _TUNNELS and _TUNNELS[s] > 0
 
-class ForwardServer(SocketServer.ThreadingTCPServer):
-    daemon_threads = True
-    allow_reuse_address = True
-
-class Handler(SocketServer.BaseRequestHandler):
-
-    def handle(self):
-        client = paramiko.SSHClient()
-        client.load_system_host_keys()
-        client.set_missing_host_key_policy(paramiko.RejectPolicy())
-        try:
-            logger().debug('Connecting with %s', _pretty_dest(self.tunnel))
-            client.connect(**self.tunnel)
-            transport = client.get_transport()
-            # FIXME don't start a new connection every time!
-
-            chain_host = self.chain["hostname"]
-            chain_port = self.chain.get("port", 22)
-            chain_addr = (chain_host, chain_port)
-            logger().debug('Using tunnel! %s:%d', chain_host, chain_port)
-            if not transport.is_active():
-                logger().warning('Connection "%s" not active anymore', self.sid)
-                _TUNNELS[self.sid] = -2
-                return
-            try:
-                chan = transport.open_channel('direct-tcpip', chain_addr,
-                                              self.request.getpeername())
-            except Exception as e:
-                logger().warning('Incoming request to %s:%d failed: %s', chain_host, chain_port, repr(e))
-                _TUNNELS[self.sid] = -3
-                return
-            if chan is None:
-                logger().warning('Incoming request to %s:%d was rejected by the SSH server.', *chain_addr)
-                _TUNNELS[self.sid] = -4
-                return
-            logger().debug('Connected! Tunnel open %r -> %r -> %r', self.request.getpeername(), chan.getpeername(), chain_addr)
-            try:
-                while True:
-                    r, w, x = select.select([ self.request, chan ], [], [])
-                    if self.request in r:
-                        data = self.request.recv(BUFF_SIZE)
-                        if len(data) == 0:
-                            break
-                        chan.send(data)
-                    if chan in r:
-                        data = chan.recv(BUFF_SIZE)
-                        if len(data) == 0:
-                            break
-                        self.request.send(data)
-            finally:
-                peername = self.request.getpeername()
-                chan.close()
-                self.request.close()
-                logger().debug('Tunnel closed from %r', peername)
-        finally:
-            client.close()
-
 def forward_tunnel(s, local_port, via, remote):
-
-    class SubHander(Handler):
-        chain = remote
-        sid = s
-        tunnel = via
 
     def run():
         try:
             _TUNNELS[s] = 1
-            fs = ForwardServer(('', local_port), SubHander)
+            cmd = [
+                "ssh",
+                "-N",
+                "-L",
+                "{0}:{1}:{2}".format(local_port, remote["hostname"], remote.get("port", 22)),
+            ]
+            if "port" in via:
+                cmd.append("-p")
+                cmd.append(str(int(via["port"])))
+            username = via.get("username", getpass.getuser())
+            hostname = via["hostname"]
+            cmd.append("{0}@{1}".format(username, hostname))
+            if "password" in via:
+                stdin = via["password"] + '\n'
+            else:
+                stdin = None
+            logger().debug("run %s", ' '.join(cmd))
+            proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             _TUNNELS[s] = 2
-            fs.serve_forever()
+            stdout, stderr = proc.communicate(stdin)
+            logger().warning("SSH tunnel terminated!\nSTDOUT:\n%s\nSTDERR:\n%s\n", stdout, stderr)
+        except subprocess.CalledProcessError as e:
+            logger().warning("SSH tunnel failed!\n%s\n%s", ' '.join(cmd), e.output)
         finally:
             _TUNNELS[s] = -1
 
