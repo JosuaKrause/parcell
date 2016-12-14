@@ -178,6 +178,20 @@ def _get_destination_obj(dest, front):
         res["port"] = dest["tunnel_port"]
     return res
 
+class TunnelableRemoteQueue(RemoteQueue):
+    def __init__(self, *args, **kwargs):
+        # needs to be before actual constructor because
+        # _ssh_client is called from within
+        self.is_tunnel = kwargs.pop("is_tunnel", False)
+        RemoteQueue.__init__(self, *args, **kwargs)
+
+    def _ssh_client(self):
+         ssh = paramiko.SSHClient()
+         ssh.load_system_host_keys()
+         policy = paramiko.RejectPolicy() if not self.is_tunnel else paramiko.WarningPolicy()
+         ssh.set_missing_host_key_policy(policy)
+         return ssh
+
 def _get_remote(s):
     with Connector._MAIN_LOCK:
         server = _get_server(s)
@@ -190,7 +204,7 @@ def _get_remote(s):
             dest = _get_destination_obj(server, True)
             while s not in Connector._ALL_REMOTES:
                 try:
-                    Connector._ALL_REMOTES[s] = RemoteQueue(dest, remote_dir)
+                    Connector._ALL_REMOTES[s] = TunnelableRemoteQueue(dest, remote_dir, is_tunnel=("tunnel" in server))
                 except paramiko.SSHException as e:
                     _ask_for_known_hosts(dest, e)
         return Connector._ALL_REMOTES[s]
