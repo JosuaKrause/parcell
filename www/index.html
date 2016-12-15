@@ -156,6 +156,15 @@
               <span>ID:</span>
               <code id="job_id"></code>
             </div>
+            <div style="clear: both;">
+              <span style="float: left;">Status:</span>
+              <code style="float: right;" id="job_status"></code>
+            </div>
+            <div style="clear: both;">
+              <span style="float: left;">Files:</span>
+              <code style="float: right;" id="job_folder_head"></code>
+            </div>
+            <div id="job_folder" style="clear: both; max-height: 300px; overflow-y: scroll;"></div>
           </div>
         </div>
       </div>
@@ -371,9 +380,11 @@ function start() {
       "job": j["job"],
     }, function(data) {
       d3.select("#job_id").text(data["job"]);
+      d3.select("#job_status").text(data["status"]);
       d3.select("#job_info").style({
         "display": null,
       });
+      curDir.value = ".";
     });
   } // selectJob
 
@@ -444,11 +455,24 @@ function start() {
 
   d3.select("#job_submit").on("click", clickSubmit);
 
+  // File Listing
+
+  var curDir = new jkjs.Cell(urlArgs["dir"] || ".");
+  curDir.addChangeListener(listFiles);
+
+  function listFiles() {
+    d3.select("#job_folder_head").text(curDir.value);
+    // var dsel = d3.select("#job_folder").selectAll("div.file").data();
+  } // listFiles
+
+  // History
+
   function getState() {
     var s = {
       "project": project,
       "server": curServer.value,
       "job": curJob.value,
+      "dir": curDir.value,
     };
     return s;
   } // getState
@@ -458,6 +482,7 @@ function start() {
     project = state["project"];
     curServer.value = state["server"];
     curJob.value = state["job"];
+    curDir.value = state["dir"];
   } // setState
 
   var prevState = getState();

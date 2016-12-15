@@ -29,7 +29,7 @@ Then start `parcell` for the first time:
 python server.py
 ```
 
-And browse to `http://localhost:8080/parcell/`.
+And browse to `http://localhost:8000/parcell/`.
 You should see an empty "Select project" screen.
 Stop `parcell` by typing `quit` in the terminal or pressing `CTRL-C`.
 
@@ -44,13 +44,14 @@ Add a file `SERVERNAME.json` describing your server:
   "username": "joe", // your username on the server
   "needs_pw": true, // whether you need to type a password to connect
   "tunnel": "joe@connect.foobar.com", // optional server for tunneling the connection
-  "tunnel_port": 11111, // local port to tunnel through (only if tunneling)
+  "tunnel_port": 11111, // local port to tunnel through (only if tunneling) -- must be unique for each server
   "needs_tunnel_pw": true  // whether you need to type a password to tunnel (only if tunneling)
 }
 ```
+Note that JSON cannot contain comments!
 
 It is recommended to restart `parcell` (e.g., by typing `restart`) after adding
-a new server. If all your servers have the same password you can start `parcell`
+new servers. If all your servers have the same password you can start `parcell`
 with `python server.py --reuse-pw` to only type one password.
 
 # Setting up a project
@@ -60,7 +61,7 @@ Add a file `PROJECTNAME.json` describing your project:
 
 ```javascript
 {
-  "local": "~/projects/awesome", // the path to your local project folder
+  "local": "~/projects/awesome", // the path to your local project folder (note that all contents of this folder and subfolders will be copied onto the server)
   "cmd": "python run.py", // the command that runs your project
   "env": "linux", // the server environment (located in the env/ folder)
   "servers": [ // a list of servers (the SERVERNAME of the server description)
@@ -70,3 +71,4 @@ Add a file `PROJECTNAME.json` describing your project:
   ]
 }
 ```
+Note that JSON cannot contain comments!

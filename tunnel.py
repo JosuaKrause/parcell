@@ -70,5 +70,5 @@ def forward_tunnel(s, local_port, via, remote):
     while _TUNNELS[s] < 2:
         if _TUNNELS[s] < 0:
             raise ValueError("Failed to start tunnel!")
-    time.sleep(0.1)
+    time.sleep(1)
     logger().debug('Tunnel open! Proceed!')

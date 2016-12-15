@@ -120,6 +120,21 @@ def get_server(addr, port, cache):
             "status": conn.get_job_status(server, job),
         }
 
+    @server.json_worker(prefix + '/ls')
+    def json_status(args):
+        project = args["project"]
+        server = args["server"]
+        job = args["job"]
+        path = args["path"]
+        conn = get_connector(project)
+        return {
+            "project": project,
+            "server": server,
+            "job": job,
+            "path": path,
+            "files": conn.get_job_files(server, job, path),
+        }
+
     def complete_cache_clear(args, text):
         if args:
             return []
@@ -143,7 +158,7 @@ if __name__ == '__main__':
     parser.add_argument('--quota', default=4096, help="set cache quota")
     parser.add_argument('--ram-quota', default=1024, help="set RAM cache quota")
     parser.add_argument('-a', type=str, default="localhost", help="specifies the server address")
-    parser.add_argument('-p', type=int, default=8080, help="specifies the server port")
+    parser.add_argument('-p', type=int, default=8000, help="specifies the server port")
     parser.add_argument('-v', '--verbose', action='count', default=1, dest='verbosity', help="augments verbosity level")
     args = parser.parse_args()
 
@@ -164,6 +179,7 @@ if __name__ == '__main__':
     msg("initializing passwords -- please type as prompted")
     set_password_reuse(args.reuse_pw)
     init_passwords()
+    msg("initializing passwords -- done")
 
     server = get_server(addr, port, QuickCache(quota=cache_quota, ram_quota=ram_quota, temp=cache_temp, warnings=msg))
     msg("starting server at {0}:{1}", addr if addr else 'localhost', port)

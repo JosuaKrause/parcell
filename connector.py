@@ -116,7 +116,7 @@ def _read_project(f_in):
     pr = _read_config(f_in, Connector.DIR_PROJECT)
     path_local = pr["local"]
     if not os.path.exists(path_local):
-        raise ValueError("project root cannot be found: {0}".format(path_local))
+        os.makedirs(path_local)
     command = pr["cmd"]
     env = (pr["env"], _read_env(pr["env"]))
     servers = pr["servers"]
@@ -148,11 +148,11 @@ def _ask_password(user, address):
     global _GLOBAL_PASSWORD
     pw_id = (user, address)
     if pw_id not in Connector._ALL_PWS:
-        if os.path.exists(Connector.PW_FILE):
-            with open(Connector.PW_FILE, 'rb') as f:
-                res = f.read().strip()
-        elif _REUSE_PW and _GLOBAL_PASSWORD is not None:
+        if _REUSE_PW and _GLOBAL_PASSWORD is not None:
             res = _GLOBAL_PASSWORD
+        # elif os.path.exists(Connector.PW_FILE):
+        #     with open(Connector.PW_FILE, 'rb') as f:
+        #         res = f.read().strip()
         else:
             res = getpass.getpass("password for {0}@{1}:".format(user, address))
         if _REUSE_PW and _GLOBAL_PASSWORD is None:
@@ -163,8 +163,8 @@ def _ask_password(user, address):
 def _ask_for_ssh_replay(dest, e):
     msg("SSH connection could not be established due to\n{0}", e)
     msg("Please establish a SSH connection in a *different* terminal using")
-    msg("\nssh {0} {1}{2} hostname\n",
-        "-p {0}".format(dest["port"]) if "port" in dest else "",
+    msg("\nssh{0} {1}{2}\n",
+        " -p {0}".format(dest["port"]) if "port" in dest else "",
         "{0}@".format(dest["username"]) if "username" in dest else "",
         dest["hostname"],
         )
@@ -355,6 +355,11 @@ class Connector(object):
                 print(self._command, file=f)
 
             return rq.submit(None, self._path_local, Connector.SCRIPT_FILE)
+
+    def get_job_files(self, s, j, rel_path):
+        rq = self._rqs[s]
+        status, path, result = rq.status(j)
+        return rq.check_output("ls -p1t {0}".format(str(path / rel_path))).split("\n")
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Parcell Connector')
