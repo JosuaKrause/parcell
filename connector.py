@@ -150,9 +150,9 @@ def _ask_password(user, address):
     if pw_id not in Connector._ALL_PWS:
         if _REUSE_PW and _GLOBAL_PASSWORD is not None:
             res = _GLOBAL_PASSWORD
-        # elif os.path.exists(Connector.PW_FILE):
-        #     with open(Connector.PW_FILE, 'rb') as f:
-        #         res = f.read().strip()
+        elif os.path.exists(Connector.PW_FILE):
+            with open(Connector.PW_FILE, 'rb') as f:
+                res = f.read().strip()
         else:
             res = getpass.getpass("password for {0}@{1}:".format(user, address))
         if _REUSE_PW and _GLOBAL_PASSWORD is None:
@@ -163,7 +163,7 @@ def _ask_password(user, address):
 def _ask_for_ssh_replay(dest, e):
     msg("SSH connection could not be established due to\n{0}", e)
     msg("Please establish a SSH connection in a *different* terminal using")
-    msg("\nssh{0} {1}{2}\n",
+    msg("\nssh{0} {1}{2} hostname\n",
         " -p {0}".format(dest["port"]) if "port" in dest else "",
         "{0}@".format(dest["username"]) if "username" in dest else "",
         dest["hostname"],

@@ -15,10 +15,11 @@ from quick_cache import QuickCache
 
 set_msg(msg)
 
+PARCEL_MNT = '/parcell/'
 def get_server(addr, port, cache):
     server = create_server((addr, port))
 
-    server.bind_path('/parcell/', 'www')
+    server.bind_path(PARCEL_MNT, 'www')
     prefix = '/parcell'
 
     server.directory_listing = False
@@ -182,7 +183,8 @@ if __name__ == '__main__':
     msg("initializing passwords -- done")
 
     server = get_server(addr, port, QuickCache(quota=cache_quota, ram_quota=ram_quota, temp=cache_temp, warnings=msg))
-    msg("starting server at {0}:{1}", addr if addr else 'localhost', port)
+    msg("starting server..")
+    msg("please browse to http://{0}:{1}{2}", addr if addr else 'localhost', port, PARCEL_MNT)
     server.serve_forever()
     msg("shutting down..")
     server.server_close()
