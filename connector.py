@@ -138,14 +138,25 @@ def _write_project(f_out, path_local, command, env, servers, s_conn):
         "servers": [ get_server(s) for s in servers ],
     }
 
+_REUSE_PW = False
+def set_password_reuse(reuse_pw):
+    global _REUSE_PW
+    _REUSE_PW = reuse_pw
+
+_GLOBAL_PASSWORD = None
 def _ask_password(user, address):
+    global _GLOBAL_PASSWORD
     pw_id = (user, address)
     if pw_id not in Connector._ALL_PWS:
         if os.path.exists(Connector.PW_FILE):
             with open(Connector.PW_FILE, 'rb') as f:
                 res = f.read().strip()
+        elif _REUSE_PW and _GLOBAL_PASSWORD is not None:
+            res = _GLOBAL_PASSWORD
         else:
             res = getpass.getpass("password for {0}@{1}:".format(user, address))
+        if _REUSE_PW and _GLOBAL_PASSWORD is None:
+            _GLOBAL_PASSWORD = res
         Connector._ALL_PWS[pw_id] = res
     return Connector._ALL_PWS[pw_id]
 

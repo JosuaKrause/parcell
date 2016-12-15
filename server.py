@@ -8,7 +8,7 @@ import sys
 import logging
 import argparse
 
-from connector import get_envs, get_servers, get_projects, get_connector, init_passwords, set_msg
+from connector import get_envs, get_servers, get_projects, get_connector, init_passwords, set_password_reuse, set_msg
 
 from quick_server import create_server, msg, setup_restart
 from quick_cache import QuickCache
@@ -139,6 +139,7 @@ if __name__ == '__main__':
     setup_restart()
 
     parser = argparse.ArgumentParser(description='Parcell Server')
+    parser.add_argument('--reuse-pw', action='store_true', dest='reuse_pw', help="only ask for one password")
     parser.add_argument('--quota', default=4096, help="set cache quota")
     parser.add_argument('--ram-quota', default=1024, help="set RAM cache quota")
     parser.add_argument('-a', type=str, default="localhost", help="specifies the server address")
@@ -161,6 +162,7 @@ if __name__ == '__main__':
 
     msg("{0}", " ".join(sys.argv))
     msg("initializing passwords -- please type as prompted")
+    set_password_reuse(args.reuse_pw)
     init_passwords()
 
     server = get_server(addr, port, QuickCache(quota=cache_quota, ram_quota=ram_quota, temp=cache_temp, warnings=msg))
