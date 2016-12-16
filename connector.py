@@ -220,10 +220,12 @@ def _get_remote(s):
                     runs += 1
                     Connector._ALL_REMOTES[s] = TunnelableRemoteQueue(dest, remote_dir, is_tunnel=("tunnel" in server))
                 except (paramiko.SSHException, paramiko.ssh_exception.NoValidConnectionsError) as e:
-                    if runs < 5:
-                        time.sleep(1)
-                    else:
-                        _ask_for_ssh_replay(dest, e)
+                    time.sleep(1)
+                    # if runs < 5:
+                    #     time.sleep(1)
+                    # else:
+                    #     _ask_for_ssh_replay(dest, e)
+                    #     runs = 0
         return Connector._ALL_REMOTES[s]
 
 def _test_connection(s):
