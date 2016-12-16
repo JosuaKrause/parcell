@@ -54,7 +54,10 @@ def get_server(addr, port, cache):
     def json_get_servers(req, args):
         project = optional("project", args["query"])
         return {
-            "servers": get_servers() if project is None else get_connector(project).get_servers(),
+            "servers": [ {
+                "server": s,
+                "cpu": float('nan'),
+            } for s in get_servers_info() ] if project is None else get_connector(project).get_servers_info(),
         }
 
     @server.json_get(prefix + '/project_info')
@@ -106,6 +109,19 @@ def get_server(addr, port, cache):
         return {
             "project": project,
             "jobs": conn.get_all_jobs(),
+        }
+
+    @server.json_worker(prefix + '/kill_job')
+    def json_jobs(args):
+        project = args["project"]
+        server = args["server"]
+        job = args["job"]
+        conn = get_connector(project)
+        conn.delete_job(server, job)
+        return {
+            "project": project,
+            "server": server,
+            "job": job,
         }
 
     @server.json_worker(prefix + '/status')

@@ -9,6 +9,7 @@ import sys
 import json
 import math
 import time
+import shutil
 import getpass
 import logging
 import argparse
@@ -18,7 +19,7 @@ from rpaths import PosixPath
 
 from tunnel import start_tunnel, check_tunnel
 
-from tej import RemoteQueue, QueueDoesntExist, JobNotFound, parse_ssh_destination
+from tej import RemoteQueue, QueueDoesntExist, JobNotFound, RemoteCommandFailure, parse_ssh_destination
 
 def msg(message, *args, **kwargs):
     print(message.format(*args, **kwargs), file=sys.stdout)
@@ -312,6 +313,12 @@ class Connector(object):
     def get_servers(self):
         return self._servers
 
+    def get_servers_info(self):
+        return [ {
+            "server": s,
+            "cpu": self.get_cpu(self._rqs[s]),
+        } for s in self.get_servers() ]
+
     def get_server_stats(self, s):
         server = self._s_conn[s]
         rq = self._rqs[s]
@@ -366,6 +373,21 @@ class Connector(object):
 
             return rq.submit(None, self._path_local, Connector.SCRIPT_FILE)
 
+    def delete_job(self, s, j):
+        with self._lock:
+            rq = self._rqs[s]
+            try:
+                rq.kill(j)
+            except (RemoteCommandFailure, JobNotFound):
+                pass
+            try:
+                rq.delete(j)
+            except JobNotFound:
+                pass
+            path = str(PosixPath(Connector.DIR_TEMP) / s / j)
+            if os.path.exists(path):
+                shutil.rmtree(path)
+
     def get_job_files(self, s, j, rel_path):
         rq = self._rqs[s]
         status, path, result = rq.status(j)
@@ -381,12 +403,12 @@ class Connector(object):
         rq = self._rqs[s]
         status, path, result = rq.status(j)
         path = PosixPath(Connector.DIR_TEMP) / s / j
-        path_str = str(path)
+        res = str(path / req_file)
+        path_str = os.path.dirname(res)
         if not os.path.exists(path_str):
             os.makedirs(path_str)
-        res = str(path / req_file)
         if not os.path.exists(res) or status == RemoteQueue.JOB_RUNNING:
-            rq.download(j, [ req_file ], destination=path)
+            rq.download(j, [ req_file ], destination=path_str)
         return res
 
 if __name__ == '__main__':

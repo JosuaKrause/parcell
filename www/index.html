@@ -151,7 +151,7 @@
           <h3 class="panel-title">Jobs</h3>
         </div>
         <div class="panel-body">
-          <button id="job_submit" type="button" class="btn btn-default">Submit</button>
+          <button id="job_submit" type="button" class="btn btn-default" style="margin: 5px;">Submit</button>
           <div id="job_list"></div>
           <div class="well well-sm button_container" id="job_info" style="display: none; margin-top: 5px;">
             <div id="job_close" class="button_top_right">
@@ -170,6 +170,8 @@
               <code style="float: right;" id="job_folder_head"></code>
             </div>
             <div id="job_folder" style="clear: both; max-height: 300px; overflow-y: scroll;"></div>
+            <button id="job_delete" type="button" class="btn btn-default" style="float: right; margin-top: 5px;">Delete</button>
+            <div style="clear: both;"></div>
           </div>
         </div>
       </div>
@@ -330,6 +332,13 @@ function start() {
     sel.append("span").classed("server_text", true).style({
       "overflow": "hidden",
       "text-overflow": "ellipsis",
+      "float": "left",
+    });
+    sel.append("span").classed("server_cpu", true).style({
+      "float": "right",
+    });
+    sel.append("div").style({
+      "clear": "both",
     });
   });
   serverList.onUpdate(function(sel, get) {
@@ -342,14 +351,20 @@ function start() {
         return s["server"];
       },
     });
+    sel.selectAll(".server_cpu").text(function(ix) {
+      var s = get(ix);
+      return s["cpu"];
+    });
   });
 
-  net.get("servers", "servers", {
+  net.get("servers", "servers/", {
     "project": project,
   }, function(data) {
     serverList.elements(data["servers"].map(function(s) {
+      var cpu = +s["cpu"];
       return {
-        "server": s,
+        "server": s["server"],
+        "cpu": Number.isNaN(cpu) ? "" : cpu + "%",
       };
     }));
     serverList.update();
@@ -394,6 +409,16 @@ function start() {
       d3.select("#job_info").style({
         "display": null,
       });
+      d3.select("#job_delete").on("click", function() {
+        work.post("kill_job", "kill_job/", {
+          "project": project,
+          "server": j["server"],
+          "job": j["job"],
+        }, function(_) {
+          checkJobs();
+          curJob.value = null;
+        });
+      });
       if(initDir) {
         initDir = null;
         listFiles();
@@ -416,12 +441,18 @@ function start() {
     sel.append("span").classed("job_text", true).style({
       "overflow": "hidden",
       "text-overflow": "ellipsis",
+      "float": "left",
+    });
+    sel.append("span").classed("job_status", true).style({
+      "float": "right",
+    });
+    sel.append("div").style({
+      "clear": "both",
     });
   });
   jobList.onUpdate(function(sel, get) {
     sel.selectAll(".job_text").text(function(ix) {
       var j = get(ix);
-      console.log(j);
       return j["job"] + "@" + j["server"];
     }).attr({
       "title": function(ix) {
@@ -429,22 +460,33 @@ function start() {
         return j["job"] + "@" + j["server"];
       },
     });
+    sel.selectAll(".job_status").text(function(ix) {
+      var j = get(ix);
+      return j["status"];
+    });
   });
 
   function checkJobs() {
     work.post("jobs", "jobs/", {
       "project": project,
     }, function(data) {
+      var stillWorking = false;
       jobList.elements(data["jobs"].map(function(j) {
-        console.log(j);
+        var status = j[2]["status"];
+        if(status !== "finished") {
+          stillWorking = true;
+        }
         return {
           "server": j[0],
           "job": j[1],
-          "info": j[2],
+          "status": status,
         };
       }));
       jobList.update();
       selectJob();
+      if(stillWorking) {
+        setTimeout(checkJobs, 2000);
+      }
     });
   } // checkJobs
 
@@ -506,7 +548,7 @@ function start() {
         if(ff.endsWith("/")) {
           curDir.value = ff.replace(/\/[^\/]+\/\.\.\//, "");
         } else {
-          window.location = net.url("file/", {
+          window.location = net.url("file.html", {
             "project": project,
             "server": j["server"],
             "job": j["job"],

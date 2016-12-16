@@ -15,7 +15,6 @@
   <style>
   .link {
     cursor: pointer;
-    text-decoration: underline;
   }
 
   .link:hover {
@@ -64,13 +63,20 @@ function start() {
   var job = urlArgs["job"];
   var file = urlArgs["file"];
 
-  d3.select("back").on("click", function() {
-    history.go(-1);
+  d3.select("#back").on("click", function() {
+    var url = net.url("index.html", {
+      "project": project,
+      "server": server,
+      "job": job + "@" + server,
+      "dir": file.includes("/") ? file.replace(/\/[^/]*$/, "") : ".",
+    });
+    window.location = url;
   });
 
   var images = [ ".png", ".jpg", ".jpeg", ];
   function get_file() {
     var f = file;
+    d3.select("#filename").text(f);
     var args = {
       "project": project,
       "server": server,
@@ -92,21 +98,35 @@ function start() {
       });
     } else {
       net.getPlain("file", "file/", args, function(text) {
+        console.log(text);
         var lines = text.split("\n");
-        var lsel = sel.selectAll("div").data(lines, function(_, ix) {
+        var ixs = lines.map(function(l, ix) {
+          return ix;
+        });
+        var lsel = sel.selectAll("code").data(ixs, function(ix) {
           return ix;
         });
         lsel.exit().remove();
-        var lselE = lsel.enter().append("div");
-        lselE.append("span");
-        lselE.append("code");
+        var lselE = lsel.enter().append("code");
+        lselE.append("span").classed("lineno", true);
+        lselE.append("span").classed("line", true);
 
-        lsel.order();
-        lsel.selectAll("span").text(function(_, ix) {
-          return ix;
+        lsel.order().style({
+          "display": "block",
+          "margin-left": 5 + "px",
+          "margin-right": 5 + "px",
+          "margin-top": function(ix) {
+            return ix ? 0 : 5 + "px";
+          },
+          "margin-bottom": function(ix) {
+            return ix < ixs.length - 1 ? 0 : 5 + "px";
+          },
         });
-        lsel.selectAll("code").text(function(l) {
-          return l;
+        lsel.selectAll(".lineno").text(function(ix) {
+          return ix + ": ";
+        });
+        lsel.selectAll(".line").text(function(ix) {
+          return lines[ix];
         });
       });
     }
@@ -115,11 +135,11 @@ function start() {
   function get_job_status() {
     work.post("job_status", "status/", {
       "project": project,
-      "server": j["server"],
-      "job": j["job"],
+      "server": server,
+      "job": job,
     }, function(data) {
+      get_file();
       if(+data["status"]["status"] === 2) {
-        get_file();
         setTimeout(get_job_status, 1000);
       }
     });

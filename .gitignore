@@ -3,6 +3,7 @@
 /project
 /.cmd_history
 /pw.txt
+/temp_files
 .DS_Store
 
 # Byte-compiled / optimized / DLL files
