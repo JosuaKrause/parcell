@@ -117,5 +117,8 @@ if __name__ == '__main__':
     dest = parse_ssh_destination(args.dest)
     port = int(args.port)
     start_tunnel("cmd", tunnel, dest, port)
-    while check_tunnel("cmd"):
-        time.sleep(1)
+    try:
+        while check_tunnel("cmd"):
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
