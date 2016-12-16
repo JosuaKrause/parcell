@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Parcell - File</title>
+  <meta charset="utf-8">
+  <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
+  <link rel="stylesheet" type="text/css" href="lib/jk-js/lib/bootstrap/css/bootstrap.min.css">
+  <link rel="stylesheet" type="text/css" href="lib/font-awesome/css/font-awesome.min.css">
+  <script src="lib/jk-js/lib/d3/d3.min.js" charset="utf-8"></script>
+  <script src="lib/jk-js/jkjs/cell.js" charset="utf-8"></script>
+  <script src="lib/jk-js/jkjs/util.js" charset="utf-8"></script>
+  <script src="js/worker.js" charset="utf-8"></script>
+  <script src="js/list.js" charset="utf-8"></script>
+  <script src="js/net.js" charset="utf-8"></script>
+  <style>
+  .link {
+    cursor: pointer;
+    text-decoration: underline;
+  }
+
+  .link:hover {
+    color: #a1a1a1;
+  }
+  </style>
+</head>
+<body onload="start()">
+<div class="container">
+  <div class="row" style="margin-top: 5px">
+    <div class="col-md-8">
+      <div class="panel panel-default">
+        <div class="panel-heading">
+          <h3 class="panel-title" style="clear: both;">
+            File <span id="filename"></span>
+            <span id="back" style="float: right;" class="link">
+              &#x2190;
+            </span>
+          </h3>
+        </div>
+        <div id="content"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+function start() {
+  var urlArgs = jkjs.util.getQueryStrings();
+  var mainDiv = d3.select("#main");
+
+  var _fmt = d3.format(".3g");
+  var fmt = function(v) {
+    if(Math.floor(v) === v) {
+      return "" + v;
+    }
+    return _fmt(v);
+  };
+
+  var net = new Net(d3.select("#status"));
+  var work = new quick_server.Worker();
+  work.status(function(req) {
+    net.otherReq(req);
+  });
+  var project = net.getProject(urlArgs);
+  var server = urlArgs["server"];
+  var job = urlArgs["job"];
+  var file = urlArgs["file"];
+
+  d3.select("back").on("click", function() {
+    history.go(-1);
+  });
+
+  var images = [ ".png", ".jpg", ".jpeg", ];
+  function get_file() {
+    var f = file;
+    var args = {
+      "project": project,
+      "server": server,
+      "job": job,
+      "file": f,
+    };
+    var sel = d3.select("#content");
+    sel.selectAll("*").remove();
+    if(images.some(function(img) {
+      return f.endsWith(img);
+    })) {
+      var imgUrl = net.url("file/", args);
+      sel.append("a").attr({
+        "href": imgUrl,
+      }).append("img").attr({
+        "src": imgUrl,
+      }).style({
+        "width": "100%",
+      });
+    } else {
+      net.getPlain("file", "file/", args, function(text) {
+        var lines = text.split("\n");
+        var lsel = sel.selectAll("div").data(lines, function(_, ix) {
+          return ix;
+        });
+        lsel.exit().remove();
+        var lselE = lsel.enter().append("div");
+        lselE.append("span");
+        lselE.append("code");
+
+        lsel.order();
+        lsel.selectAll("span").text(function(_, ix) {
+          return ix;
+        });
+        lsel.selectAll("code").text(function(l) {
+          return l;
+        });
+      });
+    }
+  } // get_file
+
+  function get_job_status() {
+    work.post("job_status", "status/", {
+      "project": project,
+      "server": j["server"],
+      "job": j["job"],
+    }, function(data) {
+      if(+data["status"]["status"] === 2) {
+        get_file();
+        setTimeout(get_job_status, 1000);
+      }
+    });
+  } // get_job_status
+
+  get_job_status();
+} // start
+</script>
+
+</body>
+</html>

@@ -39,6 +39,11 @@
     cursor: pointer;
   }
 
+  .link {
+    cursor: pointer;
+    text-decoration: underline;
+  }
+
   .project_select {
     cursor: pointer;
   }
@@ -79,7 +84,7 @@
 <body onload="start()">
 <div class="container">
   <div class="row" style="margin-top: 5px">
-    <div class="col-md-4">
+    <div class="col-md-8">
       <div class="panel panel-default">
         <div class="panel-heading">
           <h3 class="panel-title" style="clear: both;">
@@ -356,6 +361,7 @@ function start() {
   var curJob = new jkjs.Cell(urlArgs["job"] || null);
   curJob.addChangeListener(function() {
     pushState();
+    listFiles();
     selectJob();
   });
 
@@ -363,6 +369,10 @@ function start() {
     curJob.value = null;
   });
 
+  var STATUS = {
+    0: "done",
+    2: "running",
+  };
   function selectJob() {
     var job = curJob.value;
     jobList.selectId(job);
@@ -380,11 +390,16 @@ function start() {
       "job": j["job"],
     }, function(data) {
       d3.select("#job_id").text(data["job"]);
-      d3.select("#job_status").text(data["status"]);
+      d3.select("#job_status").text(STATUS[+data["status"]["status"]]);
       d3.select("#job_info").style({
         "display": null,
       });
-      curDir.value = ".";
+      if(initDir) {
+        initDir = null;
+        listFiles();
+      } else {
+        curDir.value = ".";
+      }
     });
   } // selectJob
 
@@ -392,10 +407,10 @@ function start() {
     "height": "100px",
   }));
   jobList.hasId(function(el, job) {
-    return el["job"] === job;
+    return el["job"] + "@" + el["server"] === job;
   });
   jobList.onClick(function(j) {
-    curJob.value = j["job"];
+    curJob.value = j["job"] + "@" + j["server"];
   });
   jobList.onEnter(function(sel, get) {
     sel.append("span").classed("job_text", true).style({
@@ -457,12 +472,49 @@ function start() {
 
   // File Listing
 
-  var curDir = new jkjs.Cell(urlArgs["dir"] || ".");
-  curDir.addChangeListener(listFiles);
+  var initDir = urlArgs["dir"] || ".";
+  var curDir = new jkjs.Cell(initDir);
+  curDir.addChangeListener(function() {
+    pushState();
+    listFiles();
+  });
 
   function listFiles() {
     d3.select("#job_folder_head").text(curDir.value);
-    // var dsel = d3.select("#job_folder").selectAll("div.file").data();
+    var job = curJob.value;
+    if(!job) return;
+    var j = jobList.getElement(job);
+    if(!j) return;
+    work.post("ls", "ls/", {
+      "project": project,
+      "server": j["server"],
+      "job": j["job"],
+      "path": curDir.value,
+    }, function(data) {
+      var files = data["files"];
+      var dsel = d3.select("#job_folder").selectAll("div.file").data(files, function(f) {
+        return f;
+      });
+      dsel.exit().remove();
+      var dselE = dsel.enter().append("div").classed("file", true);
+      dselE.append("code").classed("link", true);
+
+      dsel.selectAll("code").text(function(f) {
+        return f;
+      }).on("click", function(f) {
+        var ff = curDir.value + (curDir.value.endsWith("/") ? "" : "/") + f;
+        if(ff.endsWith("/")) {
+          curDir.value = ff.replace(/\/[^\/]+\/\.\.\//, "");
+        } else {
+          window.location = net.url("file/", {
+            "project": project,
+            "server": j["server"],
+            "job": j["job"],
+            "file": ff,
+          });
+        }
+      });
+    })
   } // listFiles
 
   // History

@@ -136,6 +136,17 @@ def get_server(addr, port, cache):
             "files": conn.get_job_files(server, job, path),
         }
 
+    @server.text_get(prefix + '/file')
+    def text_get(req, args):
+        args = args["query"]
+        project = args["project"]
+        server = args["server"]
+        job = args["job"]
+        req_file = args["file"]
+        conn = get_connector(project)
+        with open(conn.get_job_file(server, job, req_file), 'rb') as f:
+            return f.read()
+
     def complete_cache_clear(args, text):
         if args:
             return []

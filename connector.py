@@ -14,6 +14,7 @@ import logging
 import argparse
 import paramiko
 import threading
+from rpaths import PosixPath
 
 from tunnel import start_tunnel, check_tunnel
 
@@ -251,6 +252,7 @@ class Connector(object):
     DIR_ENV = "env"
     DIR_SERVER = "server"
     DIR_PROJECT = "project"
+    DIR_TEMP = "temp_files"
     EXT = ".json"
     SCRIPT_FILE = "_start"
     PW_FILE = "pw.txt"
@@ -367,7 +369,25 @@ class Connector(object):
     def get_job_files(self, s, j, rel_path):
         rq = self._rqs[s]
         status, path, result = rq.status(j)
-        return rq.check_output("ls -p1t {0}".format(str(path / rel_path))).split("\n")
+        rel_path = PosixPath(rel_path)
+        if rel_path.is_absolute:
+            rel_path = PosixPath(".")
+        res = rq.check_output("ls -p1t {0}".format(str(path / rel_path))).split("\n")
+        if rel_path != ".":
+            res.insert(0, "../")
+        return res
+
+    def get_job_file(self, s, j, req_file):
+        rq = self._rqs[s]
+        status, path, result = rq.status(j)
+        path = PosixPath(Connector.DIR_TEMP) / s / j
+        path_str = str(path)
+        if not os.path.exists(path_str):
+            os.makedirs(path_str)
+        res = str(path / req_file)
+        if not os.path.exists(res) or status == RemoteQueue.JOB_RUNNING:
+            rq.download(j, [ req_file ], destination=path)
+        return res
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Parcell Connector')

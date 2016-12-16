@@ -105,6 +105,15 @@ function Net(statusSel) {
             }
           }
         });
+      } else if(s["method"] === "GET_PLAIN") {
+        d3.xhr(s["url"], function(err, data) {
+          if(err) {
+            console.warn("Failed loading " + ref);
+            error();
+            return console.warn(err);
+          }
+          s["cb"](data);
+        });
       } else if(s["method"] === "POST") {
         d3.json(s["url"]).header("Content-Type", "application/json").post(s["obj"], function(err, data) {
           if(err) {
@@ -145,6 +154,17 @@ function Net(statusSel) {
     };
     runStart(ref);
   }; // get
+
+  this.getPlain = function(id, url, args, cb) {
+    if(!active) return;
+    var ref = "GET_PLAIN " + id;
+    starts[ref] = {
+      "method": "GET_PLAIN",
+      "url": that.url(url, args),
+      "cb": cb,
+    };
+    runStart(ref);
+  }; // getPlain
 
   this.post = function(id, url, args, payload, cb) {
     if(!active) return;
