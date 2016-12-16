@@ -177,7 +177,9 @@ def _setup_tunnel(s, server):
         tunnel = parse_ssh_destination(server["tunnel"])
         if "password" in tunnel:
             raise ValueError("tunnel password should not be stored in config! {0}@{1}:{2}".format(tunnel["username"], tunnel["hostname"], tunnel["port"]))
-        if server.get("needs_tunnel_pw", False):
+        needs_tunnel_pw = server.get("needs_tunnel_pw", False)
+        msg("needs pw {0}", needs_tunnel_pw)
+        if needs_tunnel_pw:
             tunnel["password"] = _ask_password(tunnel["username"], tunnel["hostname"])
         start_tunnel(s, tunnel, _get_destination_obj(server, False), server["tunnel_port"])
 
@@ -221,11 +223,6 @@ def _get_remote(s):
                     Connector._ALL_REMOTES[s] = TunnelableRemoteQueue(dest, remote_dir, is_tunnel=("tunnel" in server))
                 except (paramiko.SSHException, paramiko.ssh_exception.NoValidConnectionsError) as e:
                     time.sleep(1)
-                    # if runs < 5:
-                    #     time.sleep(1)
-                    # else:
-                    #     _ask_for_ssh_replay(dest, e)
-                    #     runs = 0
         return Connector._ALL_REMOTES[s]
 
 def _test_connection(s):
