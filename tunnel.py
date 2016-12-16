@@ -104,6 +104,7 @@ def _forward_tunnel(s, local_port, via, remote):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Parcell Tunnel')
+    parser.add_argument('--reuse-pw', action='store_true', dest='reuse_pw', help="only ask for one password")
     parser.add_argument('-v', '--verbose', action='count', default=1, dest='verbosity', help="augments verbosity level")
     parser.add_argument('tunnel', type=str, help="tunnel host")
     parser.add_argument('dest', type=str, help="destination host")
@@ -116,6 +117,13 @@ if __name__ == '__main__':
     tunnel = parse_ssh_destination(args.tunnel)
     dest = parse_ssh_destination(args.dest)
     port = int(args.port)
+
+    from connector import ask_password, set_password_reuse
+
+    set_password_reuse(args.reuse_pw)
+    tunnel["password"] =  ask_password(tunnel["username"], tunnel["hostname"])
+    dest["password"] =  ask_password(dest["username"], dest["hostname"])
+
     start_tunnel("cmd", tunnel, dest, port)
     try:
         while check_tunnel("cmd"):

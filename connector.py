@@ -145,19 +145,24 @@ def set_password_reuse(reuse_pw):
     _REUSE_PW = reuse_pw
 
 _GLOBAL_PASSWORD = None
-def _ask_password(user, address):
+def ask_password(user, address):
     global _GLOBAL_PASSWORD
     pw_id = (user, address)
     if pw_id not in Connector._ALL_PWS:
         if _REUSE_PW and _GLOBAL_PASSWORD is not None:
             res = _GLOBAL_PASSWORD
+            auto = True
         elif os.path.exists(Connector.PW_FILE):
             with open(Connector.PW_FILE, 'rb') as f:
                 res = f.read().strip()
+            auto = True
         else:
             res = getpass.getpass("password for {0}@{1}:".format(user, address))
+            auto = False
         if _REUSE_PW and _GLOBAL_PASSWORD is None:
             _GLOBAL_PASSWORD = res
+        if auto:
+            msg("password for {0}@{1} is known", user, address)
         Connector._ALL_PWS[pw_id] = res
     return Connector._ALL_PWS[pw_id]
 
@@ -177,10 +182,8 @@ def _setup_tunnel(s, server):
         tunnel = parse_ssh_destination(server["tunnel"])
         if "password" in tunnel:
             raise ValueError("tunnel password should not be stored in config! {0}@{1}:{2}".format(tunnel["username"], tunnel["hostname"], tunnel["port"]))
-        needs_tunnel_pw = server.get("needs_tunnel_pw", False)
-        msg("needs pw {0}", needs_tunnel_pw)
-        if needs_tunnel_pw:
-            tunnel["password"] = _ask_password(tunnel["username"], tunnel["hostname"])
+        if server.get("needs_tunnel_pw", False):
+            tunnel["password"] = ask_password(tunnel["username"], tunnel["hostname"])
         start_tunnel(s, tunnel, _get_destination_obj(server, False), server["tunnel_port"])
 
 def _get_destination_obj(dest, front):
@@ -234,7 +237,7 @@ def init_passwords():
     with Connector._MAIN_LOCK:
         for s in get_servers():
             server = _get_server(s)
-            server["password"] = _ask_password(server["username"], server["hostname"])
+            server["password"] = ask_password(server["username"], server["hostname"])
             _test_connection(s)
 
 def get_connector(project):
