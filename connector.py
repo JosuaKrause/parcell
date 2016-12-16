@@ -8,6 +8,7 @@ import re
 import sys
 import json
 import math
+import time
 import getpass
 import logging
 import argparse
@@ -213,11 +214,16 @@ def _get_remote(s):
                 raise ValueError("no password found in {0}".format(server))
             remote_dir = "{0}_{1}".format(Connector.DIR_REMOTE_TEJ, s)
             dest = _get_destination_obj(server, True)
+            runs = 0
             while s not in Connector._ALL_REMOTES:
                 try:
+                    runs += 1
                     Connector._ALL_REMOTES[s] = TunnelableRemoteQueue(dest, remote_dir, is_tunnel=("tunnel" in server))
                 except (paramiko.SSHException, paramiko.ssh_exception.NoValidConnectionsError) as e:
-                    _ask_for_ssh_replay(dest, e)
+                    if runs < 5:
+                        time.sleep(1)
+                    else:
+                        _ask_for_ssh_replay(dest, e)
         return Connector._ALL_REMOTES[s]
 
 def _test_connection(s):
@@ -363,15 +369,26 @@ class Connector(object):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Parcell Connector')
-    parser.add_argument('-v', action='store_true', help="use verbose output")
-    parser.add_argument('project', type=str, help="project file")
+    parser.add_argument('--reuse-pw', action='store_true', dest='reuse_pw', help="only ask for one password")
+    parser.add_argument('-v', '--verbose', action='count', default=1, dest='verbosity', help="augments verbosity level")
+    parser.add_argument('project', type=str, nargs='?', help="project file")
     args = parser.parse_args()
 
-    logging.basicConfig(level=(logging.INFO if args.v else logging.CRITICAL))
+    levels = [ logging.CRITICAL, logging.WARNING, logging.INFO, logging.DEBUG ]
+    logging.basicConfig(level=levels[min(args.verbosity, 3)])
 
+    if not args.project:
+        for p in get_projects():
+            print(p)
+        exit(0)
+
+    msg("{0}", " ".join(sys.argv))
+    msg("initializing passwords -- please type as prompted")
+    set_password_reuse(args.reuse_pw)
     init_passwords()
-    conn = Connector(args.project)
+    msg("initializing passwords -- done")
 
+    conn = Connector(args.project)
     for s in conn.get_servers():
         for (k, v) in conn.get_server_stats(s).items():
             if isinstance(v, (list, tuple)):
