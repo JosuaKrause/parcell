@@ -41,6 +41,20 @@
   </div>
 </div>
 <script>
+function getRange(s) {
+  var res = s.match(/L(\d+)((--|,|\.\.|:)(\d+))?/);
+  if(!res) return [ -1, -1 ];
+  var from = +res[1];
+  if(Number.isNaN(from)) {
+    return [ -1, -1 ]
+  }
+  var to = +res[4];
+  if(Number.isNaN(to)) {
+    to = from;
+  }
+  return [ from, to ];
+}
+
 function start() {
   var urlArgs = jkjs.util.getQueryStrings();
   var mainDiv = d3.select("#main");
@@ -85,6 +99,16 @@ function start() {
     };
     var sel = d3.select("#content");
     sel.selectAll("*").remove();
+
+    function updateHighlight() {
+      var selRange = getRange(window.location.hash);
+      sel.selectAll("tr").style({
+        "background-color": function(ix) {
+          return ix >= selRange[0] && ix <= selRange[1] ? "rgb(248, 238, 199)" : "white";
+        },
+      });
+    } // updateHighlight
+
     if(images.some(function(img) {
       return f.endsWith(img);
     })) {
@@ -103,16 +127,25 @@ function start() {
         var ixs = lines.map(function(l, ix) {
           return ix;
         });
-        var lsel = sel.selectAll("code").data(ixs, function(ix) {
+        var tsel = sel.select("table");
+        if(tsel.empty()) {
+          tsel = sel.append("table");
+        }
+        var lsel = tsel.selectAll("tr").data(ixs, function(ix) {
           return ix;
         });
         lsel.exit().remove();
-        var lselE = lsel.enter().append("code");
-        lselE.append("span").classed("lineno", true);
-        lselE.append("span").classed("line", true);
+        var lselE = lsel.enter().append("tr");
+        lselE.append("td").classed("lineno", true).style({
+          "cursor": "pointer",
+        });
+        lselE.append("td").classed("line", true);
 
         lsel.order().style({
           "display": "block",
+          "font-family": 'Consolas, "Liberation Mono", Menlo, Courier, monospace',
+          "white-space": "pre",
+          "word-wrap": "normal",
           "margin-left": 5 + "px",
           "margin-right": 5 + "px",
           "margin-top": function(ix) {
@@ -124,10 +157,18 @@ function start() {
         });
         lsel.selectAll(".lineno").text(function(ix) {
           return ix + ": ";
+        }).attr({
+          "id": function(ix) {
+            return "L"+ix;
+          },
+        }).on("click", function(ix) {
+          window.location.hash = "L"+ix;
+          updateHighlight();
         });
         lsel.selectAll(".line").text(function(ix) {
           return lines[ix];
         });
+        updateHighlight();
       });
     }
   } // get_file

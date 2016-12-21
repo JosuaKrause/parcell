@@ -7,11 +7,12 @@ import time
 import atexit
 import getpass
 import logging
+import pexpect
 import argparse
 import threading
-import subprocess
 
 from tej import parse_ssh_destination
+from StringIO import StringIO
 
 _LOGGER = None
 def logger():
@@ -76,15 +77,20 @@ def _forward_tunnel(s, local_port, via, remote):
                 stdin = via["password"] + '\n'
             else:
                 stdin = None
-            logger().debug("run %s", ' '.join(cmd))
-            proc = subprocess.Popen(cmd, close_fds=True, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            cmd = ' '.join(cmd)
+            logger().debug("run %s", cmd)
+            proc = pexpect.spawn(cmd, timeout=None, logfile=StringIO())
             _TUNNELS[s] = 2
             _PROCS[s] = proc
-            stdout, stderr = proc.communicate(stdin)
-            logger().warning("SSH tunnel terminated!\nSTDOUT:\n%s\nSTDERR:\n%s\n", stdout, stderr)
+            if stdin is not None:
+                proc.expect('password:')
+                time.sleep (0.1)
+                proc.sendline(stdin)
+            time.sleep(60)
+            proc.expect(pexpect.EOF)
+            proc.logfile.seek(0)
+            logger().warning("SSH tunnel terminated!\nLOG:\n%s\n", proc.logfile.read())
             _PROCS[s] = None
-        except subprocess.CalledProcessError as e:
-            logger().warning("SSH tunnel failed!\n%s\n%s", ' '.join(cmd), e.output)
         finally:
             _TUNNELS[s] = -1
             clean(s)
