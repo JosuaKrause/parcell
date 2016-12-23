@@ -1,4 +1,4 @@
 quick_server
 quick_cache
 pexpect
-git+https://github.com/VisTrails/tej.git
+tej

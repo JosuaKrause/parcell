@@ -63,19 +63,25 @@
 <script>
 function start() {
   var urlArgs = jkjs.util.getQueryStrings();
-  d3.select("#base").style({
-    "display": "flex",
-    "justify-content": "center",
-    "align-items": "center",
-    "height": "100vh",
-  });
   var mainDiv = d3.select("#main");
 
   var net = new Net(d3.select("#status"));
   var work = new quick_server.Worker();
   work.status(function(req) {
     net.otherReq(req);
+    if(req < 0) {
+      showBase();
+    }
   });
+
+  function showBase() {
+    d3.select("#base").style({
+      "display": "flex",
+      "justify-content": "center",
+      "align-items": "center",
+      "height": "100vh",
+    });
+  } // showBase
 
   function choose(project) {
     net.returnProject(urlArgs, project);
@@ -126,6 +132,7 @@ function start() {
       };
     }));
     list.update();
+    showBase();
   });
 } // start
 </script>
