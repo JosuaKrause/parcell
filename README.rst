@@ -62,3 +62,18 @@ Contributing
 Pull requests are highly appreciated :) Also, feel free to open
 `issues <https://github.com/JosuaKrause/parcell/issues>`__ for any
 questions or bugs you may encounter.
+
+If you want to work on the code of ``parcell``. Set the project up as follows:
+
+.. code:: bash
+
+    git clone https://github.com/JosuaKrause/parcell.git
+    cd parcell
+    git submodule update --init --recursive
+    pip install -e .
+
+This way you need to call ``parcell`` via:
+
+.. code:: bash
+
+    python -m parcell ...
