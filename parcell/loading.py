@@ -388,7 +388,19 @@ def _ask_server_list():
                 msg("  {0}", s)
     return servers
 
+VALID_NAME_CHARS = frozenset("ABCDEFGHIJKLMNOPQRSTUVWXYZ" \
+                             "abcdefghijklmnopqrstuvwxyz" \
+                             "0123456789_-+=@%:.,")
+def _check_name(name):
+    return all(c in VALID_NAME_CHARS for c in name)
+
+def _get_bad_chars(name):
+    return [ c for c in name if c not in VALID_NAME_CHARS ]
+
 def add_project(name):
+    if not _check_name(name):
+        msg("Invalid character {0} in project name '{1}'", _get_bad_chars(name)[0], name)
+        return False
     if name in get_projects():
         msg("Project '{0}' already exists!", name)
         return False
@@ -407,6 +419,9 @@ def add_project(name):
 
 def add_server():
     name = _ask("Server name")
+    if not _check_name(name):
+        msg("Invalid character {0} in server name '{1}'", _get_bad_chars(name)[0], name)
+        return None, False
     if name in get_servers():
         msg("Server '{0}' already exists!", name)
         return None, False

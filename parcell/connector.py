@@ -11,7 +11,7 @@ import logging
 import argparse
 import threading
 from rpaths import PosixPath
-from tej import RemoteQueue, QueueDoesntExist, JobNotFound, RemoteCommandFailure
+from tej import RemoteQueue, QueueDoesntExist, JobNotFound, RemoteCommandFailure, JobAlreadyExists
 
 import loading
 
@@ -52,6 +52,8 @@ class Connector(object):
 
     def __init__(self, p):
         self._lock = threading.RLock()
+        self._name = p
+        self._job_number = 0
         project = loading.read_project(p)
         self._path_local, self._command, self._env, self._servers, self._s_conn = project
         self._rqs = dict([ (s, loading.get_remote(s)) for s in self._servers ])
@@ -131,12 +133,22 @@ class Connector(object):
         ("error", "error"),
     ])
     def get_all_jobs(self):
-        return [ (s, j, Connector._STATUS.get(i["status"], "?")) for s in self.get_servers() for (j, i) in self.get_job_list(s) ]
+
+        def desc(s, j, info):
+            if i["status"] == RemoteQueue.JOB_DONE:
+                if "result" not in i: # FIXME: hack for tej without result in list
+                    return self.get_job_status(s, j)[0]
+                if int(i["result"]) != 0:
+                    return Connector._STATUS["error"]
+            return Connector._STATUS.get(i["status"], "?")
+
+        return [ (s, j, desc(s, j, i)) for s in self.get_servers() for (j, i) in self.get_job_list(s) ]
 
     def get_job_list(self, s):
+        prefix = "{0}_".format(self._name)
         try:
             rq = self._rqs[s]
-            return [ ji for ji in rq.list() ] # TODO if ji[0].startswith(name) ]
+            return [ ji for ji in rq.list() if ji[0].startswith(prefix) ]
         except QueueDoesntExist:
             return []
 
@@ -144,6 +156,8 @@ class Connector(object):
         rq = self._rqs[s]
         try:
             status, _, result = rq.status(j)
+            if status == RemoteQueue.JOB_DONE and int(result) != 0:
+                status = "error"
         except JobNotFound:
             status = "missing"
             result = "?"
@@ -159,7 +173,14 @@ class Connector(object):
             with open(os.path.join(self._path_local, Connector.SCRIPT_FILE), 'wb') as f:
                 print(self._command, file=f)
 
-            return rq.submit(None, self._path_local, Connector.SCRIPT_FILE)
+            while True:
+                try:
+                    job_name = "{0}_{1}".format(self._name, self._job_number)
+                    return rq.submit(job_name, self._path_local, Connector.SCRIPT_FILE)
+                except JobAlreadyExists:
+                    pass
+                finally:
+                    self._job_number += 1
 
     def delete_job(self, s, j):
         with self._lock:
