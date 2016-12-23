@@ -63,17 +63,6 @@ def ask_password(user, address):
         Connector._ALL_PWS[pw_id] = res
     return Connector._ALL_PWS[pw_id]
 
-def _ask_for_ssh_replay(dest, e):
-    msg("SSH connection could not be established due to\n{0}", e)
-    msg("Please establish a SSH connection in a *different* terminal using")
-    msg("\nssh{0} {1}{2} hostname\n",
-        " -p {0}".format(dest["port"]) if "port" in dest else "",
-        "{0}@".format(dest["username"]) if "username" in dest else "",
-        dest["hostname"],
-        )
-    msg("Press ENTER to continue after a connection was successfully established to try again")
-    raw_input("")
-
 def _setup_tunnel(s, server):
     with loading.MAIN_LOCK:
         tunnel = parse_ssh_destination(server["tunnel"])
@@ -231,8 +220,16 @@ class Connector(object):
             return None
         return best_s
 
+    _STATUS = dict([
+        (RemoteQueue.JOB_DONE, "done"),
+        (RemoteQueue.JOB_RUNNING, "running"),
+        (RemoteQueue.JOB_INCOMPLETE, "incomplete"),
+        (RemoteQueue.JOB_CREATED, "created"),
+        ("missing", "missing"),
+        ("error", "error"),
+    ])
     def get_all_jobs(self):
-        return [ (s, j, i) for s in self.get_servers() for (j, i) in self.get_job_list(s) ]
+        return [ (s, j, Connector._STATUS.get(i["status"], "?")) for s in self.get_servers() for (j, i) in self.get_job_list(s) ]
 
     def get_job_list(self, s):
         try:
@@ -243,12 +240,15 @@ class Connector(object):
 
     def get_job_status(self, s, j):
         rq = self._rqs[s]
-        status, path, result = rq.status(j)
-        return {
-            "status": status,
-            "path": str(path),
-            "result": result,
-        }
+        try:
+            status, _, result = rq.status(j)
+        except JobNotFound:
+            status = "missing"
+            result = "?"
+        except RemoteCommandFailure as rcf:
+            status = "error"
+            result = rcf.ret
+        return Connector._STATUS.get(status, "?"), result
 
     def submit_job(self, s):
         with self._lock:

@@ -166,6 +166,10 @@
               <code style="float: right;" id="job_status"></code>
             </div>
             <div style="clear: both;">
+              <span style="float: left;">Exit Code:</span>
+              <code style="float: right;" id="job_exit"></code>
+            </div>
+            <div style="clear: both;">
               <span style="float: left;">Files:</span>
               <code style="float: right;" id="job_folder_head"></code>
             </div>
@@ -385,10 +389,6 @@ function start() {
     curJob.value = null;
   });
 
-  var STATUS = {
-    0: "done",
-    2: "running",
-  };
   function selectJob() {
     var job = curJob.value;
     jobList.selectId(job);
@@ -407,7 +407,8 @@ function start() {
       "job": j["job"],
     }, function(data) {
       d3.select("#job_id").text(data["job"]);
-      d3.select("#job_status").text(STATUS[+data["status"]["status"]]);
+      d3.select("#job_status").text(data["status"]);
+      d3.select("#job_exit").text(data["result"]);
       d3.select("#job_info").style({
         "display": null,
       });
@@ -474,8 +475,8 @@ function start() {
     }, function(data) {
       var stillWorking = false;
       jobList.elements(data["jobs"].map(function(j) {
-        var status = j[2]["status"];
-        if(status !== "finished") {
+        var status = j[2];
+        if(status !== "done" && status !== "error") {
           stillWorking = true;
         }
         return {

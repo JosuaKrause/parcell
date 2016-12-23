@@ -104,8 +104,8 @@ def _forward_tunnel(s, local_port, via, remote):
     while _TUNNELS[s] < 2:
         if _TUNNELS[s] < 0:
             raise ValueError("Failed to start tunnel!")
-    # might not actually be working yet
-    # time.sleep(1)
+    # tunnel might not actually be working yet so
+    # consumers should check the status repeatedly
     logger().debug('Tunnel open! Proceed!')
 
 if __name__ == '__main__':

@@ -1,3 +1,3 @@
-[submodule "www/lib/jk-js"]
-	path = www/lib/jk-js
+[submodule "parcell/www/lib/jk-js"]
+	path = parcell/www/lib/jk-js
 	url = https://github.com/JosuaKrause/jk-js.git

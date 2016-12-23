@@ -5,12 +5,13 @@ from __future__ import division
 
 import os
 import sys
-import logging
-import argparse
+import time
+import threading
+import webbrowser
 
 from connector import get_envs, get_servers, get_projects, get_connector, init_passwords, set_password_reuse, set_msg
 
-from quick_server import create_server, msg, setup_restart
+from quick_server import create_server, msg, setup_restart, has_been_restarted
 from quick_cache import QuickCache
 
 set_msg(msg)
@@ -19,7 +20,7 @@ PARCEL_MNT = '/parcell/'
 def get_server(addr, port, cache):
     server = create_server((addr, port))
 
-    server.bind_path(PARCEL_MNT, 'www')
+    server.bind_path(PARCEL_MNT, os.path.join(os.path.dirname(__file__), 'www'))
     prefix = '/parcell'
 
     server.directory_listing = False
@@ -130,11 +131,13 @@ def get_server(addr, port, cache):
         server = args["server"]
         job = args["job"]
         conn = get_connector(project)
+        status, result = conn.get_job_status(server, job)
         return {
             "project": project,
             "server": server,
             "job": job,
-            "status": conn.get_job_status(server, job),
+            "status": status,
+            "result": result,
         }
 
     @server.json_worker(prefix + '/ls')
@@ -178,26 +181,10 @@ def get_server(addr, port, cache):
 
     return server
 
-if __name__ == '__main__':
+def enable_restart():
     setup_restart()
 
-    parser = argparse.ArgumentParser(description='Parcell Server')
-    parser.add_argument('--reuse-pw', action='store_true', dest='reuse_pw', help="only ask for one password")
-    parser.add_argument('--quota', default=4096, help="set cache quota")
-    parser.add_argument('--ram-quota', default=1024, help="set RAM cache quota")
-    parser.add_argument('-a', type=str, default="localhost", help="specifies the server address")
-    parser.add_argument('-p', type=int, default=8000, help="specifies the server port")
-    parser.add_argument('-v', '--verbose', action='count', default=1, dest='verbosity', help="augments verbosity level")
-    args = parser.parse_args()
-
-    levels = [ logging.CRITICAL, logging.WARNING, logging.INFO, logging.DEBUG ]
-    logging.basicConfig(level=levels[min(args.verbosity, 3)])
-
-    addr = args.a
-    port = args.p
-    cache_quota = args.quota
-    ram_quota = args.ram_quota
-
+def start_server(addr, port, cache_quota, ram_quota, reuse_pw):
     cache_temp = "tmp"
     if os.path.exists("cache_path.txt"):
         with open("cache_path.txt") as cp:
@@ -205,13 +192,26 @@ if __name__ == '__main__':
 
     msg("{0}", " ".join(sys.argv))
     msg("initializing passwords -- please type as prompted")
-    set_password_reuse(args.reuse_pw)
+    set_password_reuse(reuse_pw)
     init_passwords()
     msg("initializing passwords -- done")
 
     server = get_server(addr, port, QuickCache(quota=cache_quota, ram_quota=ram_quota, temp=cache_temp, warnings=msg))
+    urlstr = "http://{0}:{1}{2}".format(addr if addr else 'localhost', port, PARCEL_MNT)
+
+    def browse():
+        time.sleep(1)
+        msg("browsing to {0}", urlstr)
+        webbrowser.open(urlstr, new=0, autoraise=True)
+
+    if not has_been_restarted():
+        t = threading.Thread(target=browse, name="Browser")
+        t.daemon = True
+        t.start()
+    else:
+        msg("please browse to {0}", urlstr)
+
     msg("starting server..")
-    msg("please browse to http://{0}:{1}{2}", addr if addr else 'localhost', port, PARCEL_MNT)
     server.serve_forever()
     msg("shutting down..")
     server.server_close()

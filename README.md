@@ -26,16 +26,20 @@ pip install -r requirements.txt
 Then start `parcell` for the first time:
 
 ```bash
-python server.py
+python parcell
 ```
 
-And browse to `http://localhost:8000/parcell/`.
+Note that `parcell` uses your current working directory to locate your projects
+and servers so make sure you are in the same directory every time you start it.
+After starting `parcell` browses to `http://localhost:8000/parcell/`.
 You should see an empty "Select project" screen.
 Stop `parcell` by typing `quit` in the terminal or pressing `CTRL-C`.
+Add projects and servers as shown below. Then start the server again.
+If everything worked you should see your projects.
 
 # Adding a server
 
-Locate the `server` folder in your `parcell` directory.
+Locate the `servers` folder in your working directory.
 Add a file `SERVERNAME.json` describing your server:
 
 ```javascript
@@ -56,7 +60,7 @@ with `python server.py --reuse-pw` to only type one password.
 
 # Setting up a project
 
-Locate the `project` folder in your `parcell` directory.
+Locate the `projects` folder in your `parcell` directory.
 Add a file `PROJECTNAME.json` describing your project:
 
 ```javascript

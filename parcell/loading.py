@@ -18,9 +18,10 @@ def set_msg(m):
 
 MAIN_LOCK = threading.RLock()
 
-DIR_ENV = "env"
-DIR_SERVER = "server"
-DIR_PROJECT = "project"
+DIR_ENV_DEFAULT = os.path.join(os.path.dirname(__file__), "default_envs")
+DIR_ENV = "envs"
+DIR_SERVER = "servers"
+DIR_PROJECT = "projects"
 EXT = ".json"
 
 DEFAULT_REGEX = "(.*)"
@@ -30,13 +31,17 @@ UPGRADE_ENV = []
 UPGRADE_SERVER = []
 UPGRADE_PROJECT = []
 
-def _get_config_list(config):
+def _get_config_list(config, default=None):
     if not os.path.exists(config):
         os.makedirs(config)
-    return [ c[:-len(EXT)] for c in os.listdir(config) if c.endswith(EXT) ]
+    res = [ c[:-len(EXT)] for c in os.listdir(config) if c.endswith(EXT) ]
+    if default is not None:
+        res += [ c[:-len(EXT)] for c in os.listdir(default) if c.endswith(EXT) ]
+        res = list(set(res))
+    return res
 
 def get_envs():
-    return _get_config_list(DIR_ENV)
+    return _get_config_list(DIR_ENV, DIR_ENV_DEFAULT)
 
 def get_servers():
     return _get_config_list(DIR_SERVER)
@@ -47,13 +52,20 @@ def get_projects():
 def _get_config_path(c, config):
     return "{0}{1}".format(os.path.join(config, c), EXT)
 
-def _read_config(f_in, config, upgrade):
+def _read_config(f_in, config, upgrade, default=None):
     if not os.path.exists(config):
         os.makedirs(config)
-    with open(_get_config_path(f_in, config), 'rb') as f:
+    path = _get_config_path(f_in, config)
+    is_new = False
+    if not os.path.exists(path) and default:
+        path = _get_config_path(f_in, default)
+        msg("{0}", path)
+        is_new = True
+    with open(path, 'rb') as f:
         res = json.load(f)
     res, chg = _check_version(res, upgrade)
-    if chg:
+    if chg or is_new:
+        # don't overwrite the default :P
         _write_config(f_in, config, res)
     return res
 
@@ -61,7 +73,7 @@ def _write_config(f_out, config, obj):
     if not os.path.exists(config):
         os.makedirs(config)
     with open(_get_config_path(f_out, config), 'wb') as f:
-        json.write(obj)
+        json.dump(obj, f, indent=2, sort_keys=True)
 
 def _check_version(obj, upgrade):
     v = int(obj.get("version", 0))
@@ -74,7 +86,7 @@ def _check_version(obj, upgrade):
     return obj, chg
 
 def _read_env(f_in):
-    es = _read_config(f_in, DIR_ENV, UPGRADE_ENV)
+    es = _read_config(f_in, DIR_ENV, UPGRADE_ENV, DIR_ENV_DEFAULT)
 
     def get(field):
         res = []
