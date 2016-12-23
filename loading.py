@@ -26,6 +26,10 @@ EXT = ".json"
 DEFAULT_REGEX = "(.*)"
 DEFAULT_LINE = 0
 
+UPGRADE_ENV = []
+UPGRADE_SERVER = []
+UPGRADE_PROJECT = []
+
 def _get_config_list(config):
     if not os.path.exists(config):
         os.makedirs(config)
@@ -43,11 +47,15 @@ def get_projects():
 def _get_config_path(c, config):
     return "{0}{1}".format(os.path.join(config, c), EXT)
 
-def _read_config(f_in, config):
+def _read_config(f_in, config, upgrade):
     if not os.path.exists(config):
         os.makedirs(config)
     with open(_get_config_path(f_in, config), 'rb') as f:
-        return json.load(f)
+        res = json.load(f)
+    res, chg = _check_version(res, upgrade)
+    if chg:
+        _write_config(f_in, config, res)
+    return res
 
 def _write_config(f_out, config, obj):
     if not os.path.exists(config):
@@ -55,8 +63,18 @@ def _write_config(f_out, config, obj):
     with open(_get_config_path(f_out, config), 'wb') as f:
         json.write(obj)
 
+def _check_version(obj, upgrade):
+    v = int(obj.get("version", 0))
+    chg = False
+    while v < len(upgrade):
+        obj = upgrade[v](obj)
+        v += 1
+        obj["version"] = v
+        chg = True
+    return obj, chg
+
 def _read_env(f_in):
-    es = _read_config(f_in, DIR_ENV)
+    es = _read_config(f_in, DIR_ENV, UPGRADE_ENV)
 
     def get(field):
         res = []
@@ -94,7 +112,7 @@ def _write_env(f_out, env):
     _write_config(f_out, DIR_ENV, obj)
 
 def _read_server(f_in):
-    res = _read_config(f_in, DIR_SERVER)
+    res = _read_config(f_in, DIR_SERVER, UPGRADE_SERVER)
     if "password" in res:
         raise ValueError("password should not be stored in config! {0}".format(f_in))
     return res
@@ -115,7 +133,7 @@ def get_server(s):
         return ALL_SERVERS[s]
 
 def read_project(f_in):
-    pr = _read_config(f_in, DIR_PROJECT)
+    pr = _read_config(f_in, DIR_PROJECT, UPGRADE_PROJECT)
     path_local = pr["local"]
     if not os.path.exists(path_local):
         os.makedirs(path_local)
