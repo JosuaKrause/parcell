@@ -138,6 +138,7 @@ function start() {
         var lselE = lsel.enter().append("tr");
         lselE.append("td").classed("lineno", true).style({
           "cursor": "pointer",
+          "user-select": "none",
         });
         lselE.append("td").classed("line", true);
 

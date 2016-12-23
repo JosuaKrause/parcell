@@ -11,7 +11,7 @@ import webbrowser
 
 from connector import get_envs, get_servers, get_projects, get_connector, init_passwords, set_password_reuse, set_msg
 
-from quick_server import create_server, msg, setup_restart, has_been_restarted
+from quick_server import create_server, msg, setup_restart, has_been_restarted, is_original
 from quick_cache import QuickCache
 
 set_msg(msg)
@@ -180,6 +180,9 @@ def get_server(addr, port, cache):
         cache.clean_cache(args[0] if args else None)
 
     return server
+
+def is_child():
+    return not is_original()
 
 def enable_restart():
     setup_restart()

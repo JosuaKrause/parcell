@@ -6,18 +6,14 @@ from __future__ import division
 import os
 import sys
 import math
-import time
 import shutil
-import getpass
 import logging
 import argparse
-import paramiko
 import threading
 from rpaths import PosixPath
-from tej import RemoteQueue, QueueDoesntExist, JobNotFound, RemoteCommandFailure, parse_ssh_destination
+from tej import RemoteQueue, QueueDoesntExist, JobNotFound, RemoteCommandFailure
 
 import loading
-from tunnel import start_tunnel, check_tunnel
 
 def msg(message, *args, **kwargs):
     print(message.format(*args, **kwargs), file=sys.stdout)
@@ -36,95 +32,11 @@ def get_servers():
 def get_projects():
     return loading.get_projects()
 
-_REUSE_PW = False
 def set_password_reuse(reuse_pw):
-    global _REUSE_PW
-    _REUSE_PW = reuse_pw
-
-_GLOBAL_PASSWORD = None
-def ask_password(user, address):
-    global _GLOBAL_PASSWORD
-    pw_id = (user, address)
-    if pw_id not in Connector._ALL_PWS:
-        if _REUSE_PW and _GLOBAL_PASSWORD is not None:
-            res = _GLOBAL_PASSWORD
-            auto = True
-        elif os.path.exists(Connector.PW_FILE):
-            with open(Connector.PW_FILE, 'rb') as f:
-                res = f.read().strip()
-            auto = True
-        else:
-            res = getpass.getpass("password for {0}@{1}:".format(user, address))
-            auto = False
-        if _REUSE_PW and _GLOBAL_PASSWORD is None:
-            _GLOBAL_PASSWORD = res
-        if auto:
-            msg("password for {0}@{1} is known", user, address)
-        Connector._ALL_PWS[pw_id] = res
-    return Connector._ALL_PWS[pw_id]
-
-def _setup_tunnel(s, server):
-    with loading.MAIN_LOCK:
-        tunnel = parse_ssh_destination(server["tunnel"])
-        if "password" in tunnel:
-            raise ValueError("tunnel password should not be stored in config! {0}@{1}:{2}".format(tunnel["username"], tunnel["hostname"], tunnel["port"]))
-        if server.get("needs_tunnel_pw", False):
-            tunnel["password"] = ask_password(tunnel["username"], tunnel["hostname"])
-        start_tunnel(s, tunnel, _get_destination_obj(server, False), server["tunnel_port"])
-
-def _get_destination_obj(dest, front):
-    res = dict([
-        it for it in dest.items() if it[0] not in Connector.SERVER_SKIP_KEYS
-    ])
-    if front and "tunnel_port" in dest:
-        res["hostname"] = "127.0.0.1"
-        res["port"] = dest["tunnel_port"]
-    return res
-
-class TunnelableRemoteQueue(RemoteQueue):
-    def __init__(self, *args, **kwargs):
-        # needs to be before actual constructor because
-        # _ssh_client is called from within
-        self.is_tunnel = kwargs.pop("is_tunnel", False)
-        RemoteQueue.__init__(self, *args, **kwargs)
-
-    def _ssh_client(self):
-         ssh = paramiko.SSHClient()
-         ssh.load_system_host_keys()
-         policy = paramiko.RejectPolicy() if not self.is_tunnel else paramiko.WarningPolicy()
-         ssh.set_missing_host_key_policy(policy)
-         return ssh
-
-def _get_remote(s):
-    with loading.MAIN_LOCK:
-        server = loading.get_server(s)
-        if "tunnel" in server and not check_tunnel(s):
-            _setup_tunnel(s, server)
-        if s not in Connector._ALL_REMOTES:
-            if server.get("needs_pw", False) and "password" not in server:
-                raise ValueError("no password found in {0}".format(server))
-            remote_dir = "{0}_{1}".format(Connector.DIR_REMOTE_TEJ, s)
-            dest = _get_destination_obj(server, True)
-            runs = 0
-            while s not in Connector._ALL_REMOTES:
-                try:
-                    runs += 1
-                    Connector._ALL_REMOTES[s] = TunnelableRemoteQueue(dest, remote_dir, is_tunnel=("tunnel" in server))
-                except (paramiko.SSHException, paramiko.ssh_exception.NoValidConnectionsError) as e:
-                    time.sleep(1)
-        return Connector._ALL_REMOTES[s]
-
-def _test_connection(s):
-    msg("checking connectivity of {0}", s)
-    conn = _get_remote(s)
-    conn.check_call("hostname")
+    loading.set_password_reuse(reuse_pw)
 
 def init_passwords():
-    with loading.MAIN_LOCK:
-        for s in loading.get_servers():
-            server = loading.get_server(s)
-            server["password"] = ask_password(server["username"], server["hostname"])
-            _test_connection(s)
+    loading.init_passwords()
 
 def get_connector(project):
     with loading.MAIN_LOCK:
@@ -134,25 +46,15 @@ def get_connector(project):
 
 class Connector(object):
     DIR_TEMP = "temp_files"
-    DIR_REMOTE_TEJ = "~/.parcell"
     SCRIPT_FILE = "_start"
-    PW_FILE = "pw.txt"
 
-    SERVER_SKIP_KEYS = frozenset([
-        "needs_pw",
-        "tunnel",
-        "tunnel_port",
-        "needs_tunnel_pw",
-    ])
-    _ALL_REMOTES = {}
     _ALL_CONNECTORS = {}
-    _ALL_PWS = {}
 
     def __init__(self, p):
         self._lock = threading.RLock()
         project = loading.read_project(p)
         self._path_local, self._command, self._env, self._servers, self._s_conn = project
-        self._rqs = dict([ (s, _get_remote(s)) for s in self._servers ])
+        self._rqs = dict([ (s, loading.get_remote(s)) for s in self._servers ])
         Connector._ALL_CONNECTORS[p] = self
 
     def get_path(self):
@@ -234,7 +136,7 @@ class Connector(object):
     def get_job_list(self, s):
         try:
             rq = self._rqs[s]
-            return list(rq.list())
+            return [ ji for ji in rq.list() ] # TODO if ji[0].startswith(name) ]
         except QueueDoesntExist:
             return []
 
