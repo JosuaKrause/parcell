@@ -266,6 +266,7 @@ function start() {
   function selectServer() {
     var server = curServer.value;
     serverList.selectId(server);
+    // serverList.scrollToSelect(true);
     serverList.update();
     if(!server) {
       d3.select("#server_info").style({
@@ -391,6 +392,7 @@ function start() {
   function selectJob() {
     var job = curJob.value;
     jobList.selectId(job);
+    // jobList.scrollToSelect(true);
     jobList.update();
     var j = jobList.getElement(job);
     if(!job || !j) {

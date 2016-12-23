@@ -13,6 +13,12 @@ function List(sel) {
     selectId = _;
   };
 
+  var scrollTo = false;
+  this.scrollToSelect = function(_) {
+    if(!arguments.length) return scrollTo;
+    scrollTo = _;
+  };
+
   var elements = [];
   this.elements = function(_) {
     if(!arguments.length) return elements;
@@ -66,7 +72,12 @@ function List(sel) {
     onEnter && onEnter(lise, get);
     lis.classed({
       "list_li_sel": function(ix) {
-        return hasId && hasId(get(ix), selectId);
+        var isSel = hasId && hasId(get(ix), selectId);
+        if(isSel && scrollTo) {
+          this.scrollIntoView();
+          scrollTo = false;
+        }
+        return isSel;
       },
       "clickable": function() {
         return !!onClick;

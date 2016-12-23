@@ -4,9 +4,7 @@ from __future__ import print_function
 from __future__ import division
 
 import os
-import re
 import sys
-import json
 import math
 import time
 import shutil
@@ -16,10 +14,10 @@ import argparse
 import paramiko
 import threading
 from rpaths import PosixPath
-
-from tunnel import start_tunnel, check_tunnel
-
 from tej import RemoteQueue, QueueDoesntExist, JobNotFound, RemoteCommandFailure, parse_ssh_destination
+
+import loading
+from tunnel import start_tunnel, check_tunnel
 
 def msg(message, *args, **kwargs):
     print(message.format(*args, **kwargs), file=sys.stdout)
@@ -27,119 +25,16 @@ def msg(message, *args, **kwargs):
 def set_msg(m):
     global msg
     msg = m
-
-def _get_config_list(config):
-    if not os.path.exists(config):
-        os.makedirs(config)
-    return [ c[:-len(Connector.EXT)] for c in os.listdir(config) if c.endswith(Connector.EXT) ]
+    loading.set_msg(m)
 
 def get_envs():
-    return _get_config_list(Connector.DIR_ENV)
+    return loading.get_envs()
 
 def get_servers():
-    return _get_config_list(Connector.DIR_SERVER)
+    return loading.get_servers()
 
 def get_projects():
-    return _get_config_list(Connector.DIR_PROJECT)
-
-def _get_config_path(c, config):
-    return "{0}{1}".format(os.path.join(config, c), Connector.EXT)
-
-def _read_config(f_in, config):
-    if not os.path.exists(config):
-        os.makedirs(config)
-    with open(_get_config_path(f_in, config), 'rb') as f:
-        return json.load(f)
-
-def _write_config(f_out, config, obj):
-    if not os.path.exists(config):
-        os.makedirs(config)
-    with open(_get_config_path(f_out, config), 'wb') as f:
-        json.write(obj)
-
-def _read_env(f_in):
-    es = _read_config(f_in, Connector.DIR_ENV)
-
-    def get(field):
-        res = []
-        if field in es:
-            for e in es[field]:
-                name = e["name"]
-                cmd = e["cmd"]
-                regex = re.compile(e.get("regex", Connector.DEFAULT_REGEX))
-                line = int(e.get("line", Connector.DEFAULT_LINE))
-                res.append((name, cmd, regex, line))
-        return res
-
-    return {
-        "versions": get("versions"),
-        "cpus": get("cpus"),
-    }
-
-def _write_env(f_out, env):
-    obj = {}
-
-    def conv(e):
-        name, cmd, regex, line = e
-        res = {
-            "name": name,
-            "cmd": cmd,
-        }
-        if regex != Connector.DEFAULT_REGEX:
-            res["regex"] = regex
-        if line != Connector.DEFAULT_LINE:
-            res["line"] = line
-        return res
-
-    for (k, es) in env.items():
-        obj[k] = [ conv(e) for e in es ]
-    _write_config(f_out, Connector.DIR_ENV, obj)
-
-def _read_server(f_in):
-    res = _read_config(f_in, Connector.DIR_SERVER)
-    if "password" in res:
-        raise ValueError("password should not be stored in config! {0}".format(f_in))
-    return res
-
-def _get_server(s):
-    with Connector._MAIN_LOCK:
-        if s not in Connector._ALL_SERVERS:
-            Connector._ALL_SERVERS[s] = _read_server(s)
-        return Connector._ALL_SERVERS[s]
-
-def _write_server(f_out, server):
-    obj = {}
-    for (k, v) in server.items():
-        if k == "password":
-            continue
-        obj[k] = v
-    _write_config(f_out, Connector.DIR_SERVER, obj)
-
-def _read_project(f_in):
-    pr = _read_config(f_in, Connector.DIR_PROJECT)
-    path_local = pr["local"]
-    if not os.path.exists(path_local):
-        os.makedirs(path_local)
-    command = pr["cmd"]
-    env = (pr["env"], _read_env(pr["env"]))
-    servers = pr["servers"]
-    s_conn = dict([ (s, _get_server(s)) for s in servers ])
-    return (path_local, command, env, servers, s_conn)
-
-def _write_project(f_out, path_local, command, env, servers, s_conn):
-    e_name, e_obj = env
-    _write_env(e_name, e_obj)
-
-    def get_server(s_name):
-        _write_server(s_name, s_conn[s_name])
-        return s_name
-
-    obj = {
-        "local": path_local,
-        "cmd": command,
-        "env": e_name,
-        "servers": [ get_server(s) for s in servers ],
-    }
+    return loading.get_projects()
 
 _REUSE_PW = False
 def set_password_reuse(reuse_pw):
@@ -180,7 +75,7 @@ def _ask_for_ssh_replay(dest, e):
     raw_input("")
 
 def _setup_tunnel(s, server):
-    with Connector._MAIN_LOCK:
+    with loading.MAIN_LOCK:
         tunnel = parse_ssh_destination(server["tunnel"])
         if "password" in tunnel:
             raise ValueError("tunnel password should not be stored in config! {0}@{1}:{2}".format(tunnel["username"], tunnel["hostname"], tunnel["port"]))
@@ -212,8 +107,8 @@ class TunnelableRemoteQueue(RemoteQueue):
          return ssh
 
 def _get_remote(s):
-    with Connector._MAIN_LOCK:
-        server = _get_server(s)
+    with loading.MAIN_LOCK:
+        server = loading.get_server(s)
         if "tunnel" in server and not check_tunnel(s):
             _setup_tunnel(s, server)
         if s not in Connector._ALL_REMOTES:
@@ -236,30 +131,23 @@ def _test_connection(s):
     conn.check_call("hostname")
 
 def init_passwords():
-    with Connector._MAIN_LOCK:
-        for s in get_servers():
-            server = _get_server(s)
+    with loading.MAIN_LOCK:
+        for s in loading.get_servers():
+            server = loading.get_server(s)
             server["password"] = ask_password(server["username"], server["hostname"])
             _test_connection(s)
 
 def get_connector(project):
-    with Connector._MAIN_LOCK:
+    with loading.MAIN_LOCK:
         if project not in Connector._ALL_CONNECTORS:
             Connector(project) # adds itself to the list
         return Connector._ALL_CONNECTORS[project]
 
 class Connector(object):
-    DIR_REMOTE_TEJ = "~/.parcell"
-    DIR_ENV = "env"
-    DIR_SERVER = "server"
-    DIR_PROJECT = "project"
     DIR_TEMP = "temp_files"
-    EXT = ".json"
+    DIR_REMOTE_TEJ = "~/.parcell"
     SCRIPT_FILE = "_start"
     PW_FILE = "pw.txt"
-
-    DEFAULT_REGEX = "(.*)"
-    DEFAULT_LINE = 0
 
     SERVER_SKIP_KEYS = frozenset([
         "needs_pw",
@@ -267,15 +155,13 @@ class Connector(object):
         "tunnel_port",
         "needs_tunnel_pw",
     ])
-    _ALL_SERVERS = {}
     _ALL_REMOTES = {}
     _ALL_CONNECTORS = {}
     _ALL_PWS = {}
-    _MAIN_LOCK = threading.RLock()
 
     def __init__(self, p):
         self._lock = threading.RLock()
-        project = _read_project(p)
+        project = loading.read_project(p)
         self._path_local, self._command, self._env, self._servers, self._s_conn = project
         self._rqs = dict([ (s, _get_remote(s)) for s in self._servers ])
         Connector._ALL_CONNECTORS[p] = self
@@ -422,7 +308,7 @@ if __name__ == '__main__':
     logging.basicConfig(level=levels[min(args.verbosity, 3)])
 
     if not args.project:
-        for p in get_projects():
+        for p in loading.get_projects():
             print(p)
         exit(0)
 
