@@ -214,7 +214,7 @@ def start_server(addr, port, cache_quota, ram_quota, reuse_pw):
     else:
         msg("please browse to {0}", urlstr)
 
-    msg("starting server..")
+    msg("starting web interface..")
     server.serve_forever()
     msg("shutting down..")
     server.server_close()

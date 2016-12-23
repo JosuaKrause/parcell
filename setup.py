@@ -50,7 +50,7 @@ setup(
           'console_scripts': [ 'parcell = parcell.main:main' ],
     },
     install_requires=req,
-    description='Local development of server executed projects.',
+    description='UI for local development of server executed projects.',
     author='Josua Krause',
     author_email='josua.krause@gmail.com',
     maintainer='Josua Krause',
