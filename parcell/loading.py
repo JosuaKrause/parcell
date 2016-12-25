@@ -14,7 +14,7 @@ import threading
 import traceback
 from tej import RemoteQueue, parse_ssh_destination
 
-from tunnel import start_tunnel, check_tunnel
+from tunnel import start_tunnel, check_tunnel, check_permission_denied
 
 def simple_msg(message, *args, **kwargs):
     print(message.format(*args, **kwargs), file=sys.stdout)
@@ -279,13 +279,17 @@ def get_remote(s):
                 raise ValueError("no password found in {0}".format(server))
             remote_dir = "{0}_{1}".format(DIR_REMOTE_TEJ, s)
             dest = _get_destination_obj(server, True)
-            runs = 0
             while s not in ALL_REMOTES:
                 try:
-                    runs += 1
                     ALL_REMOTES[s] = TunnelableRemoteQueue(dest, remote_dir, is_tunnel=("tunnel" in server))
-                except (paramiko.SSHException, paramiko.ssh_exception.NoValidConnectionsError) as e:
-                    time.sleep(1)
+                except (paramiko.SSHException, paramiko.ssh_exception.NoValidConnectionsError):
+                    if "tunnel" in server:
+                        if check_permission_denied(s):
+                            msg("Incorrect password for {0}.", server["tunnel"])
+                            sys.exit(1)
+                        time.sleep(1)
+                    else:
+                        raise
         return ALL_REMOTES[s]
 
 def test_connection(s):

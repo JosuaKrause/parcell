@@ -82,8 +82,8 @@
   </style>
 </head>
 <body onload="start()">
-<div class="container">
-  <div class="row" style="margin-top: 5px">
+<div class="container" style="display: none;">
+  <div class="row" style="margin-top: 5px;">
     <div class="col-md-8">
       <div class="panel panel-default">
         <div class="panel-heading">
@@ -201,6 +201,9 @@ function start() {
     net.otherReq(req);
   });
   var project = net.getProject(urlArgs);
+  d3.select("#container").style({
+    "display": null,
+  });
 
   d3.select("#project_select").on("click", function() {
     urlArgs["project"] = null;

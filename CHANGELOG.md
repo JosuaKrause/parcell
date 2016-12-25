@@ -1,6 +1,9 @@
 Changelog
 =========
 
+Bugfixes:
+* Be more clear about why connections do not succeed (#20)
+
 0.1.5 (2016-12-24)
 ------------------
 

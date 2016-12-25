@@ -3,6 +3,7 @@
 from __future__ import print_function
 from __future__ import division
 
+import sys
 import time
 import atexit
 import getpass
@@ -35,7 +36,19 @@ def start_tunnel(s, via, dest, tunnel_port):
 
 def check_tunnel(s):
     with _LOCK:
-        return s in _TUNNELS and _TUNNELS[s] > 0
+        if s not in _TUNNELS:
+            return False
+        if _TUNNELS[s] == -3 or _TUNNELS[s] == -4:
+            sys.exit(1)
+        return _TUNNELS[s] > 0
+
+def check_permission_denied(s):
+    with _LOCK:
+        if s not in _TUNNELS:
+            return False
+        if _TUNNELS[s] == -3 or _TUNNELS[s] == -4:
+            sys.exit(1)
+        return _TUNNELS[s] == -2
 
 def clean(s):
     with _LOCK:
@@ -59,6 +72,7 @@ atexit.register(clean_all)
 def _forward_tunnel(s, local_port, via, remote):
 
     def run():
+        log = StringIO()
         try:
             _TUNNELS[s] = 1
             cmd = [
@@ -80,20 +94,42 @@ def _forward_tunnel(s, local_port, via, remote):
             cmd = ' '.join(cmd)
             logger().debug("run %s", cmd)
             proc = pexpect.spawn(cmd, timeout=None)
-            proc.logfile_read = StringIO()
-            _TUNNELS[s] = 2
+            proc.logfile_read = log
             _PROCS[s] = proc
-            if stdin is not None:
-                proc.expect('password:')
-                time.sleep (0.1)
-                proc.sendline(stdin)
-            time.sleep(60)
-            proc.expect(pexpect.EOF)
-            proc.logfile_read.seek(0)
-            logger().info("SSH tunnel terminated!\nLOG:\n%s", proc.logfile_read.read())
+            try:
+                _TUNNELS[s] = 2
+                while True:
+                    scenario = proc.expect([ 'RSA key', 'Permission denied', 'password:' ])
+                    if scenario == 0:
+                        print("The authenticity of host {0} could not be established!".format(hostname))
+                        print("Please make sure you can connect to the server by running\n")
+                        print("ssh -p {0} {1}@{2} hostname\n".format(via.get("port", 22), username, hostname))
+                        print("and then retry again.")
+                        _TUNNELS[s] = -3
+                        return
+                    elif scenario == 1:
+                        _TUNNELS[s] = -2
+                        return
+                    elif scenario == 2:
+                        if stdin is not None:
+                            time.sleep(0.1)
+                            proc.sendline(stdin)
+                        else:
+                            print("It seems connecting to {0}@{1} requires a password".format(username, hostname))
+                            print("but it is not specified in the server definition '{0}'.".format(s))
+                            print("Please adjust the settings and try again.")
+                            _TUNNELS[s] = -4
+                            return
+            except pexpect.EOF:
+                pass
             _PROCS[s] = None
         finally:
-            _TUNNELS[s] = -1
+            if _TUNNELS[s] == -2 or _TUNNELS[s] == -3 or _TUNNELS[s] == -4:
+                return
+            log.seek(0)
+            logger().info("SSH tunnel terminated!\nLOG:\n%s", log.read())
+            if _TUNNELS[s] >= 0:
+                _TUNNELS[s] = -1
             clean(s)
 
     _PROCS[s] = None
@@ -104,9 +140,12 @@ def _forward_tunnel(s, local_port, via, remote):
     logger().debug('Waiting for tunnel to open...')
     while _TUNNELS[s] < 2:
         if _TUNNELS[s] < 0:
+            if _TUNNELS[s] == -3 or _TUNNELS[s] == -4:
+                sys.exit(1)
+            if _TUNNELS[s] == -2:
+                return
             raise ValueError("Failed to start tunnel!")
-    # tunnel might not actually be working yet so
-    # consumers should check the status repeatedly
+    # DISCLAIMER! Tunnel might not be working yet -- check connection repeatedly
     logger().debug('Tunnel open! Proceed!')
 
 if __name__ == '__main__':
