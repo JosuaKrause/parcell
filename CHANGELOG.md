@@ -1,6 +1,12 @@
 Changelog
 =========
 
+0.1.3 (2016-12-24)
+------------------
+
+Bugfixes:
+* Fixed password showing when closing after SSH tunnel (#19)
+
 0.1.2 (2016-12-23)
 ------------------
 

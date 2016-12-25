@@ -79,7 +79,8 @@ def _forward_tunnel(s, local_port, via, remote):
                 stdin = None
             cmd = ' '.join(cmd)
             logger().debug("run %s", cmd)
-            proc = pexpect.spawn(cmd, timeout=None, logfile=StringIO())
+            proc = pexpect.spawn(cmd, timeout=None)
+            proc.logfile_read = StringIO()
             _TUNNELS[s] = 2
             _PROCS[s] = proc
             if stdin is not None:
@@ -88,8 +89,8 @@ def _forward_tunnel(s, local_port, via, remote):
                 proc.sendline(stdin)
             time.sleep(60)
             proc.expect(pexpect.EOF)
-            proc.logfile.seek(0)
-            logger().warning("SSH tunnel terminated!\nLOG:\n%s\n", proc.logfile.read())
+            proc.logfile_read.seek(0)
+            logger().warning("SSH tunnel terminated!\nLOG:\n%s", proc.logfile_read.read())
             _PROCS[s] = None
         finally:
             _TUNNELS[s] = -1
