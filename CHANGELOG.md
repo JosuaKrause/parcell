@@ -1,6 +1,12 @@
 Changelog
 =========
 
+0.1.4 (2016-12-24)
+------------------
+
+Bugfixes:
+* Fix parcell cannot be found on command line error (#16)
+
 0.1.3 (2016-12-24)
 ------------------
 

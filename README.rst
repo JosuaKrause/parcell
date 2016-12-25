@@ -28,6 +28,8 @@ Now run
 
 where ``PROJECTNAME`` is the name of the project you want to create.
 Follow all instructions until the script creates your project.
+If the command cannot be found try restarting the terminal or use
+`python -m parcell ...` instead.
 
 Then run
 

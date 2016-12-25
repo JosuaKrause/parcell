@@ -90,7 +90,7 @@ def _forward_tunnel(s, local_port, via, remote):
             time.sleep(60)
             proc.expect(pexpect.EOF)
             proc.logfile_read.seek(0)
-            logger().warning("SSH tunnel terminated!\nLOG:\n%s", proc.logfile_read.read())
+            logger().info("SSH tunnel terminated!\nLOG:\n%s", proc.logfile_read.read())
             _PROCS[s] = None
         finally:
             _TUNNELS[s] = -1

@@ -171,6 +171,9 @@ class Connector(object):
             rq = self._rqs[s]
 
             with open(os.path.join(self._path_local, Connector.SCRIPT_FILE), 'wb') as f:
+                print("if [ -f ~/.bashrc ]; then\n" \
+                      "  . ~/.bashrc\n" \
+                      "fi", file=f)
                 print(self._command, file=f)
 
             while True:
