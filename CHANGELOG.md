@@ -1,6 +1,13 @@
 Changelog
 =========
 
+0.1.5 (2016-12-24)
+------------------
+
+Features:
+* Ask once for password reuse
+* Source script
+
 0.1.4 (2016-12-24)
 ------------------
 

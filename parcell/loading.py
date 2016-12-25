@@ -201,12 +201,20 @@ def set_password_reuse(reuse_pw):
 _GLOBAL_PASSWORD = None
 _ALL_PWS = {}
 _ASK_REUSE = True
+_ASK_REUSE_PRIMED = None
 def ask_password(user, address):
     global _GLOBAL_PASSWORD
     global _ASK_REUSE
+    global _ASK_REUSE_PRIMED
     pw_id = (user, address)
     if pw_id not in _ALL_PWS:
-        if _REUSE_PW and _GLOBAL_PASSWORD is not None:
+        if _ASK_REUSE_PRIMED is not None and _ask_yesno("Do you want to reuse this password for other servers"):
+            set_password_reuse(True)
+            res = _ASK_REUSE_PRIMED
+            _ASK_REUSE_PRIMED = None
+            _ASK_REUSE = False
+            auto = True
+        elif _REUSE_PW and _GLOBAL_PASSWORD is not None:
             res = _GLOBAL_PASSWORD
             auto = True
         elif os.path.exists(PW_FILE):
@@ -215,10 +223,11 @@ def ask_password(user, address):
             auto = True
         else:
             res = getpass.getpass("password for {0}@{1}:".format(user, address))
-            if _ASK_REUSE and _ask_yesno("Do you want to reuse this password for other servers"):
-                set_password_reuse(True)
-            else:
+            if _ASK_REUSE_PRIMED is not None:
+                _ASK_REUSE_PRIMED = None
                 _ASK_REUSE = False
+            elif _ASK_REUSE:
+                _ASK_REUSE_PRIMED = res
             auto = False
         if _REUSE_PW and _GLOBAL_PASSWORD is None:
             _GLOBAL_PASSWORD = res
