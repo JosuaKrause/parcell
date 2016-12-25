@@ -179,7 +179,7 @@ class Connector(object):
             while True:
                 try:
                     job_name = "{0}_{1}".format(self._name, self._job_number)
-                    return rq.submit(job_name, self._path_local, Connector.SCRIPT_FILE)
+                    return rq.submit(job_name, self._path_local, 'sh -c "source ./{0}"'.format(Connector.SCRIPT_FILE))
                 except JobAlreadyExists:
                     pass
                 finally:
