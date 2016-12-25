@@ -39,7 +39,7 @@ def check_tunnel(s):
 
 def clean(s):
     with _LOCK:
-        if _PROCS[s] is not None:
+        if _PROCS is not None and _PROCS[s] is not None:
             try:
                 _PROCS[s].terminate()
             except:
