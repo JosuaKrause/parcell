@@ -97,14 +97,17 @@ function start() {
       "job": job,
       "file": f,
     };
-    var sel = d3.select("#content");
+    var sel = d3.select("#content").style({
+      "overflow-x": "auto",
+      "width": "100%",
+    });
     sel.selectAll("*").remove();
 
     function updateHighlight() {
       var selRange = getRange(window.location.hash);
       sel.selectAll("tr").style({
         "background-color": function(ix) {
-          return ix >= selRange[0] && ix <= selRange[1] ? "rgb(248, 238, 199)" : "white";
+          return ix >= selRange[0] && ix <= selRange[1] ? "#f8eec7" : "white";
         },
       });
     } // updateHighlight

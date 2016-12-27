@@ -171,6 +171,9 @@ class Connector(object):
             cmd = self._project.command
 
             with open(os.path.join(path, Connector.SCRIPT_FILE), 'wb') as f:
+                print("if [ -f /etc/profile ]; then\n" \
+                      "  . /etc/profile\n" \
+                      "fi", file=f)
                 print("if [ -f ~/.bashrc ]; then\n" \
                       "  . ~/.bashrc\n" \
                       "fi", file=f)
@@ -179,7 +182,7 @@ class Connector(object):
             while True:
                 try:
                     job_name = "{0}_{1}".format(self._project.name, self._job_number)
-                    return rq.submit(job_name, path, 'sh -c "source ./{0}"'.format(Connector.SCRIPT_FILE))
+                    return rq.submit(job_name, path, Connector.SCRIPT_FILE)
                 except JobAlreadyExists:
                     pass
                 finally:
