@@ -52,21 +52,19 @@ class Connector(object):
 
     def __init__(self, p):
         self._lock = threading.RLock()
-        self._name = p
         self._job_number = 0
-        project = loading.read_project(p)
-        self._path_local, self._command, self._env, self._servers, self._s_conn = project
-        self._rqs = dict([ (s, loading.get_remote(s)) for s in self._servers ])
+        self._project = loading.get_project(p)
+        self._rqs = dict([ (s.name, loading.get_remote(s)) for s in self._project["servers"] ])
         Connector._ALL_CONNECTORS[p] = self
 
     def get_path(self):
-        return self._path_local
+        return self._project.path_local
 
     def get_command(self):
-        return self._command
+        return self._project.command
 
     def get_env(self):
-        return self._env[0]
+        return self._project["env"].name
 
     def _get_env(self, rq, chk):
         name, cmd, regex, line = chk
@@ -80,7 +78,7 @@ class Connector(object):
         return name, m.group(1)
 
     def get_cpu(self, rq):
-        for cpu in self._env[1]["cpus"]:
+        for cpu in self._project["env"]["cpus"]:
             _, c = self._get_env(rq, cpu)
             if c:
                 try:
@@ -90,7 +88,7 @@ class Connector(object):
         return float('nan')
 
     def get_servers(self):
-        return self._servers
+        return [ s.name for s in self._project["servers"] ]
 
     def get_servers_info(self):
         return [ {
@@ -99,11 +97,11 @@ class Connector(object):
         } for s in self.get_servers() ]
 
     def get_server_stats(self, s):
-        server = self._s_conn[s]
+        server = self._project.servers[s]
         rq = self._rqs[s]
         return {
             "name": server["hostname"],
-            "versions": [ self._get_env(rq, chk) for chk in self._env[1]["versions"] ],
+            "versions": [ self._get_env(rq, chk) for chk in self._project["env"]["versions"] ],
             "cpu": self.get_cpu(rq),
         }
 
@@ -145,7 +143,7 @@ class Connector(object):
         return [ (s, j, desc(s, j, i)) for s in self.get_servers() for (j, i) in self.get_job_list(s) ]
 
     def get_job_list(self, s):
-        prefix = "{0}_".format(self._name)
+        prefix = "{0}_".format(self._project.name)
         try:
             rq = self._rqs[s]
             return [ ji for ji in rq.list() if ji[0].startswith(prefix) ]
@@ -178,7 +176,7 @@ class Connector(object):
 
             while True:
                 try:
-                    job_name = "{0}_{1}".format(self._name, self._job_number)
+                    job_name = "{0}_{1}".format(self._project.name, self._job_number)
                     return rq.submit(job_name, self._path_local, 'sh -c "source ./{0}"'.format(Connector.SCRIPT_FILE))
                 except JobAlreadyExists:
                     pass

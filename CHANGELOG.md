@@ -8,7 +8,7 @@ Bugfixes:
 ------------------
 
 Features:
-* Ask once for password reuse
+* Ask once for password reuse (#17)
 * Source script
 
 0.1.4 (2016-12-24)

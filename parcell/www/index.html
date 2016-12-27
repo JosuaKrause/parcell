@@ -82,7 +82,7 @@
   </style>
 </head>
 <body onload="start()">
-<div class="container" style="display: none;">
+<div class="container" id="root" style="display: none;">
   <div class="row" style="margin-top: 5px;">
     <div class="col-md-8">
       <div class="panel panel-default">
@@ -201,7 +201,7 @@ function start() {
     net.otherReq(req);
   });
   var project = net.getProject(urlArgs);
-  d3.select("#container").style({
+  d3.select("#root").style({
     "display": null,
   });
 

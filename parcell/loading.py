@@ -8,6 +8,7 @@ import re
 import sys
 import json
 import time
+import atexit
 import getpass
 import paramiko
 import threading
@@ -26,14 +27,13 @@ def set_msg(m):
 
 MAIN_LOCK = threading.RLock()
 
-DIR_ENV_DEFAULT = os.path.join(os.path.dirname(__file__), "default_envs")
+DEFAULT_BASE = os.path.dirname(__file__)
+DIR_ENV_DEFAULT = os.path.join(DEFAULT_BASE, "default_envs")
 DIR_ENV = "envs"
 DIR_SERVER = "servers"
 DIR_PROJECT = "projects"
 DIR_REMOTE_TEJ = "~/.parcell"
 EXT = ".json"
-
-PW_FILE = "pw.txt"
 
 DEFAULT_REGEX = "(.*)"
 DEFAULT_LINE = 0
@@ -41,13 +41,6 @@ DEFAULT_LINE = 0
 UPGRADE_ENV = []
 UPGRADE_SERVER = []
 UPGRADE_PROJECT = []
-
-SERVER_SKIP_KEYS = frozenset([
-    "needs_pw",
-    "tunnel",
-    "tunnel_port",
-    "needs_tunnel_pw",
-])
 
 def _get_config_list(config, default=None):
     if not os.path.exists(config):
@@ -67,131 +60,296 @@ def get_servers():
 def get_projects():
     return _get_config_list(DIR_PROJECT)
 
-def _get_config_path(c, config):
-    return "{0}{1}".format(os.path.join(config, c), EXT)
+def _get_path(path, name):
+    return os.path.join(path, "{0}{1}".format(name, EXT))
 
-def _read_config(f_in, config, upgrade, default=None):
-    if not os.path.exists(config):
-        os.makedirs(config)
-    path = _get_config_path(f_in, config)
-    is_new = False
-    if not os.path.exists(path) and default:
-        path = _get_config_path(f_in, default)
-        msg("{0}", path)
-        is_new = True
-    with open(path, 'rb') as f:
-        res = json.load(f)
-    res, chg = _check_version(res, upgrade)
-    if chg or is_new:
-        # don't overwrite the default :P
-        _write_config(f_in, config, res)
-    return res
-
-def _write_config(f_out, config, obj):
-    if not os.path.exists(config):
-        os.makedirs(config)
-    with open(_get_config_path(f_out, config), 'wb') as f:
+def _write_json(path, obj):
+    with open(path, 'wb') as f:
         json.dump(obj, f, indent=2, sort_keys=True)
 
-def _check_version(obj, upgrade):
-    v = int(obj.get("version", 0))
-    chg = False
-    while v < len(upgrade):
-        obj = upgrade[v](obj)
-        v += 1
-        obj["version"] = v
-        chg = True
-    return obj, chg
+CONFIG_LOG = threading.RLock()
+ALL_CONFIG = {}
+CONFIG_NUM = 0
+def _close_all_config():
+    with CONFIG_LOG:
+        for c in list(ALL_CONFIG.values()):
+            c.close()
 
-def _read_env(f_in):
-    es = _read_config(f_in, DIR_ENV, UPGRADE_ENV, DIR_ENV_DEFAULT)
+atexit.register(_close_all_config)
 
-    def get(field):
-        res = []
-        if field in es:
-            for e in es[field]:
-                name = e["name"]
-                cmd = e["cmd"]
-                regex = re.compile(e.get("regex", DEFAULT_REGEX))
-                line = int(e.get("line", DEFAULT_LINE))
-                res.append((name, cmd, regex, line))
-        return res
+class Config(object):
 
-    return {
-        "versions": get("versions"),
-        "cpus": get("cpus"),
-    }
+    def __init__(self, name):
+        global CONFIG_NUM
+        if not _check_name(name):
+            raise ValueError("bad character '{0}' in name '{1}'".format(_get_bad_chars(name)[0], name))
+        self._name = name
+        self._chg = False
+        self._closed = True
+        with CONFIG_LOG:
+            self._config_num = CONFIG_NUM
+            CONFIG_NUM += 1
+        self._reopen()
 
-def _write_env(f_out, env):
-    obj = {}
+    def _reopen(self):
+        if not self.is_closed():
+            return
+        self._obj = self._read()
+        self._closed = False
+        with CONFIG_LOG:
+            ALL_CONFIG[self._config_num] = self
 
-    def conv(e):
-        name, cmd, regex, line = e
-        res = {
-            "name": name,
-            "cmd": cmd,
+    def close(self):
+        with CONFIG_LOG:
+            if self._config_num in ALL_CONFIG:
+                del ALL_CONFIG[self._config_num]
+            if self._chg and not self.is_closed():
+                self._chg = False
+                self._write(self.write_object(self._obj))
+            self._closed = True
+
+    def is_closed(self):
+        return self._closed
+
+    def _get_config_path(self, config):
+        return _get_path(config, self._name)
+
+    def _read(self):
+        config = self.get_config_dir()
+        if not os.path.exists(config):
+            os.makedirs(config)
+        path = self._get_config_path(config)
+        is_new = False
+        if not os.path.exists(path) and default is not None:
+            path = self._get_config_path(default)
+            msg("{0}", path)
+            is_new = True
+        with open(path, 'rb') as f:
+            res = json.load(f)
+        res, chg = self._check_version(res)
+        if chg or is_new:
+            self._write(res)
+        return self.read_object(res)
+
+    def _check_version(self, obj):
+        upgrade = self.get_upgrade_list()
+        v = int(obj.get("version", 0))
+        chg = False
+        while v < len(upgrade):
+            obj = upgrade[v](obj)
+            v += 1
+            obj["version"] = v
+            chg = True
+        return obj, chg
+
+    def _write(self, obj):
+        config = self.get_config_dir()
+        if not os.path.exists(config):
+            os.makedirs(config)
+        _write_json(self._get_config_path(config), obj)
+
+    def get_config_dir(self):
+        raise NotImplementedError("get_config_dir")
+
+    def get_default_dir(self):
+        return None
+
+    def get_upgrade_list(self):
+        raise NotImplementedError("get_upgrade_list")
+
+    def set_change(self, chg):
+        self._chg = chg
+        if chg:
+            self._reopen()
+
+    def has_change(self):
+        return self._chg
+
+    def read_object(self, obj):
+        return obj
+
+    def write_object(self, obj):
+        return obj
+
+    def __getitem__(self, key):
+        self._reopen()
+        return self._obj[key]
+
+    def __setitem__(self, key, value):
+        self._reopen()
+        if key not in self._obj or self._obj[key] != value:
+            self._obj[key] = value
+            self.set_change(True)
+
+    def __contains__(self, key):
+        self._reopen()
+        return key in self._obj
+
+    def get(self, key, default=None):
+        if key not in self:
+            return default
+        return self[key]
+
+    @property
+    def name(self):
+        return self._name
+
+    def get_obj(self, skip=None):
+        self._reopen()
+        return dict(
+            it for it in self._obj.items() if skip is None or it[0] not in skip
+        )
+
+class EnvConfig(Config):
+
+    def __init__(self, name):
+        super(EnvConfig, self).__init__(name)
+
+    def get_config_dir(self):
+        return DIR_ENV
+
+    def get_default_dir(self):
+        return DIR_ENV_DEFAULT
+
+    def get_upgrade_list(self):
+        return UPGRADE_ENV
+
+    def read_object(self, obj):
+
+        def get(field):
+            res = []
+            if field in obj:
+                for e in obj[field]:
+                    name = e["name"]
+                    cmd = e["cmd"]
+                    regex = re.compile(e.get("regex", DEFAULT_REGEX))
+                    line = int(e.get("line", DEFAULT_LINE))
+                    res.append((name, cmd, regex, line))
+            return res
+
+        return {
+            "versions": get("versions"),
+            "cpus": get("cpus"),
         }
-        if regex.pattern != DEFAULT_REGEX:
-            res["regex"] = regex.pattern
-        if line != DEFAULT_LINE:
-            res["line"] = line
+
+    def write_object(self, obj):
+
+        def conv(e):
+            name, cmd, regex, line = e
+            res = {
+                "name": name,
+                "cmd": cmd,
+            }
+            if regex.pattern != DEFAULT_REGEX:
+                res["regex"] = regex.pattern
+            if line != DEFAULT_LINE:
+                res["line"] = line
+            return res
+
+        return dict((k, [ conv(e) for e in es ]) for (k, es) in obj.items())
+
+ALL_ENVS = {}
+def get_env(e):
+    with MAIN_LOCK:
+        if e not in ALL_ENVS:
+            ALL_ENVS[e] = EnvConfig(e)
+        return ALL_ENVS[e]
+
+SERVER_SKIP_KEYS = frozenset([
+    "needs_pw",
+    "tunnel",
+    "tunnel_port",
+    "needs_tunnel_pw",
+])
+class ServerConfig(Config):
+
+    def __init__(self, name):
+        super(ServerConfig, self).__init__(name)
+
+    def get_config_dir(self):
+        return DIR_SERVER
+
+    def get_upgrade_list(self):
+        return UPGRADE_SERVER
+
+    def read_object(self, obj):
+        if "password" in obj:
+            raise ValueError("password should not be stored in config! {0}".format(self._name))
+        return obj
+
+    def write_object(self, obj):
+        return dict((k, v) for (k, v) in obj.items() if k != "password")
+
+    def get_destination_obj(self, front):
+        res = self.get_obj(SERVER_SKIP_KEYS)
+        if front and "tunnel_port" in self:
+            res["hostname"] = "127.0.0.1"
+            res["port"] = self["tunnel_port"]
         return res
 
-    for (k, es) in env.items():
-        obj[k] = [ conv(e) for e in es ]
-    _write_config(f_out, DIR_ENV, obj)
-
-def _read_server(f_in):
-    res = _read_config(f_in, DIR_SERVER, UPGRADE_SERVER)
-    if "password" in res:
-        raise ValueError("password should not be stored in config! {0}".format(f_in))
-    return res
-
-def _get_tunnel_ports():
-    sobjs = [ _read_server(n) for n in get_servers() ]
-    return [ int(s["tunnel_port"]) for s in sobjs if "tunnel_port" in s ]
-
-def _write_server(f_out, server):
-    obj = {}
-    for (k, v) in server.items():
-        if k == "password":
-            continue
-        obj[k] = v
-    _write_config(f_out, DIR_SERVER, obj)
+    def __setitem__(self, key, value):
+        chg = self.has_change()
+        super(ServerConfig, self).__setitem__(key, value)
+        self.set_change(chg)
 
 ALL_SERVERS = {}
-def _get_server(s):
+def get_server(s):
     with MAIN_LOCK:
         if s not in ALL_SERVERS:
-            ALL_SERVERS[s] = _read_server(s)
+            ALL_SERVERS[s] = ServerConfig(s)
         return ALL_SERVERS[s]
 
-def read_project(f_in):
-    pr = _read_config(f_in, DIR_PROJECT, UPGRADE_PROJECT)
-    path_local = pr["local"]
-    if not os.path.exists(path_local):
-        os.makedirs(path_local)
-    command = pr["cmd"]
-    env = (pr["env"], _read_env(pr["env"]))
-    servers = pr["servers"]
-    s_conn = dict([ (s, _get_server(s)) for s in servers ])
-    return (path_local, command, env, servers, s_conn)
+class ProjectConfig(Config):
 
-def _write_project(f_out, path_local, command, env, servers, s_conn):
-    e_name, e_obj = env
-    _write_env(e_name, e_obj)
+    def __init__(self, name):
+        super(ProjectConfig, self).__init__(name)
+        if not os.path.exists(self.path_local):
+            os.makedirs(self.path_local)
 
-    def get_server_name(s_name):
-        _write_server(s_name, s_conn[s_name])
-        return s_name
+    def get_config_dir(self):
+        return DIR_PROJECT
 
-    obj = {
-        "local": path_local,
-        "cmd": command,
-        "env": e_name,
-        "servers": [ get_server_name(s) for s in servers ],
-    }
-    _write_config(f_out, DIR_PROJECT, obj)
+    def get_upgrade_list(self):
+        return UPGRADE_PROJECT
+
+    def read_object(self, obj):
+        return {
+            "local": obj["local"],
+            "cmd": obj["cmd"],
+            "env": get_env(obj["env"]),
+            "servers": [ get_server(s) for s in obj["servers"] ],
+        }
+
+    def write_object(self, obj):
+        return {
+            "local": obj["local"],
+            "cmd": obj["cmd"],
+            "env": obj["env"].name,
+            "servers": [ s.name for s in obj["servers"] ],
+        }
+
+    @property
+    def path_local(self):
+        return self["local"]
+
+    @property
+    def command(self):
+        return self["cmd"]
+
+    @property
+    def servers(self):
+        return dict( (s.name, s) for s in self["servers"] )
+
+ALL_PROJECTS = {}
+def get_project(p):
+    with MAIN_LOCK:
+        if p not in ALL_PROJECTS:
+            ALL_PROJECTS[p] = ProjectConfig(p)
+        return ALL_PROJECTS[p]
+
+def _get_tunnel_ports():
+    sobjs = [ get_server(n) for n in get_servers() ]
+    return [ int(s["tunnel_port"]) for s in sobjs if "tunnel_port" in s ]
 
 _REUSE_PW = False
 def set_password_reuse(reuse_pw):
@@ -217,10 +375,6 @@ def ask_password(user, address):
         elif _REUSE_PW and _GLOBAL_PASSWORD is not None:
             res = _GLOBAL_PASSWORD
             auto = True
-        elif os.path.exists(PW_FILE):
-            with open(PW_FILE, 'rb') as f:
-                res = f.read().strip()
-            auto = True
         else:
             res = getpass.getpass("password for {0}@{1}:".format(user, address))
             if _ASK_REUSE_PRIMED is not None:
@@ -236,23 +390,15 @@ def ask_password(user, address):
         _ALL_PWS[pw_id] = res
     return _ALL_PWS[pw_id]
 
-def _setup_tunnel(s, server):
+def _setup_tunnel(server):
     with MAIN_LOCK:
+        s = server.name
         tunnel = parse_ssh_destination(server["tunnel"])
         if "password" in tunnel:
             raise ValueError("tunnel password should not be stored in config! {0}@{1}:{2}".format(tunnel["username"], tunnel["hostname"], tunnel["port"]))
         if server.get("needs_tunnel_pw", False):
             tunnel["password"] = ask_password(tunnel["username"], tunnel["hostname"])
-        start_tunnel(s, tunnel, _get_destination_obj(server, False), server["tunnel_port"])
-
-def _get_destination_obj(dest, front):
-    res = dict([
-        it for it in dest.items() if it[0] not in SERVER_SKIP_KEYS
-    ])
-    if front and "tunnel_port" in dest:
-        res["hostname"] = "127.0.0.1"
-        res["port"] = dest["tunnel_port"]
-    return res
+        start_tunnel(s, tunnel, server.get_destination_obj(False), server["tunnel_port"])
 
 class TunnelableRemoteQueue(RemoteQueue):
     def __init__(self, *args, **kwargs):
@@ -269,47 +415,52 @@ class TunnelableRemoteQueue(RemoteQueue):
          return ssh
 
 ALL_REMOTES = {}
-def get_remote(s):
+def get_remote(server):
     with MAIN_LOCK:
-        server = _get_server(s)
+        s = server.name
         if "tunnel" in server and not check_tunnel(s):
-            _setup_tunnel(s, server)
+            _setup_tunnel(server)
         if s not in ALL_REMOTES:
             if server.get("needs_pw", False) and "password" not in server:
-                raise ValueError("no password found in {0}".format(server))
+                raise ValueError("no password found in {0}".format(s))
             remote_dir = "{0}_{1}".format(DIR_REMOTE_TEJ, s)
-            dest = _get_destination_obj(server, True)
+            dest = server.get_destination_obj(True)
             while s not in ALL_REMOTES:
                 try:
                     ALL_REMOTES[s] = TunnelableRemoteQueue(dest, remote_dir, is_tunnel=("tunnel" in server))
-                except (paramiko.SSHException, paramiko.ssh_exception.NoValidConnectionsError):
-                    if "tunnel" in server:
-                        if check_permission_denied(s):
-                            msg("Incorrect password for {0}.", server["tunnel"])
-                            sys.exit(1)
-                        time.sleep(1)
+                except paramiko.ssh_exception.NoValidConnectionsError as e:
+                    if e.errno is None:
+                        if "tunnel" in server:
+                            if check_permission_denied(s):
+                                msg("Incorrect password for {0}.", server["tunnel"])
+                                sys.exit(1)
+                            time.sleep(1)
                     else:
-                        raise
+                        raise e
         return ALL_REMOTES[s]
 
-def test_connection(s):
-    server = _get_server(s)
+def test_connection(server, save):
+    s = server.name
     if server.get("needs_pw", False):
         server["password"] = ask_password(server["username"], server["hostname"])
     msg("Checking connectivity of {0}", s)
-    conn = get_remote(s)
+    conn = get_remote(server)
     conn.check_call("hostname")
+    if save:
+        server.set_change(True)
+        server.close()
 
 def init_passwords():
     with MAIN_LOCK:
         for s in get_servers():
-            test_connection(s)
+            test_connection(get_server(s), False)
 
 def _check_project(name):
-    path_local, command, env, servers, s_conn = read_project(name)
-    for s in servers:
-        test_connection(s)
-    _write_project(name, path_local, command, env, servers, s_conn)
+    p = get_project(name)
+    for s in p["servers"]:
+        test_connection(s, True)
+    p.set_change(True)
+    p.close()
 
 def _getline(line):
     return raw_input(line).rstrip("\r\n")
@@ -430,14 +581,29 @@ def add_project(name):
     _, env, _ = _ask_choice("Environment", of=get_envs())
     project["env"] = env
     project["servers"] = _ask_server_list()
-    _write_config(name, DIR_PROJECT, project)
+    _write_json(_get_path(DIR_PROJECT, name), project)
     msg("Checking project configuration")
     _check_project(name)
     msg("Successfully created project '{0}'!", name)
     return True
 
+def _infer_server_name(hostname):
+    if not _check_name(hostname):
+        return None
+    cur_host = hostname
+    name = ''
+    while '.' in cur_host:
+        dot = cur_host.index('.')
+        name = "{0}{1}{2}".format(name, '.' if name != '' else '', cur_host[:dot])
+        if name not in get_servers():
+            return name
+        cur_host = cur_host[dot+1:]
+    return None if hostname in get_servers() else hostname
+
+
 def add_server():
-    name = _ask("Server name")
+    hostname = _ask("Hostname")
+    name = _ask("Server name", default=_infer_server_name(hostname))
     if not _check_name(name):
         msg("Invalid character {0} in server name '{1}'", _get_bad_chars(name)[0], name)
         return None, False
@@ -446,7 +612,7 @@ def add_server():
         return None, False
     try:
         server = {}
-        server["hostname"] = _ask("Hostname")
+        server["hostname"] = hostname
         server["username"] = _ask("Username")
         server["port"] = _ask_port("Port", default=22)
         server["needs_pw"] = _ask_yesno("Is a password required?")
@@ -473,9 +639,9 @@ def add_server():
                 ":{0}".format(tunnel_port) if tunnel_port != 22 else ""
             )
             server["needs_tunnel_pw"] = _ask_yesno("Is a tunnel password required?")
-        _write_server(name, server)
+        _write_json(_get_path(DIR_SERVER, name), server)
         msg("Checking server configuration")
-        test_connection(name)
+        test_connection(get_server(name), True)
         msg("Successfully created server '{0}'!", name)
     except (KeyboardInterrupt, SystemExit):
         raise
