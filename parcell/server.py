@@ -113,7 +113,7 @@ def get_server(addr, port, cache):
         }
 
     @server.json_worker(prefix + '/kill_job')
-    def json_jobs(args):
+    def json_kill(args):
         project = args["project"]
         server = args["server"]
         job = args["job"]
@@ -123,6 +123,15 @@ def get_server(addr, port, cache):
             "project": project,
             "server": server,
             "job": job,
+        }
+
+    @server.json_worker(prefix + '/kill_all')
+    def json_kill_all(args):
+        project = args["project"]
+        conn = get_connector(project)
+        conn.delete_all_jobs()
+        return {
+            "project": project,
         }
 
     @server.json_worker(prefix + '/status')

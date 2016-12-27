@@ -1,6 +1,12 @@
 Changelog
 =========
 
+Features:
+* "Delete All" button
+* Select new jobs in list
+* Scroll selected jobs into view
+* Save JSON files if config changed (#15)
+
 Bugfixes:
 * Be more clear about why connections do not succeed (#20)
 

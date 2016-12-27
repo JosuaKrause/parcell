@@ -177,6 +177,10 @@
             <button id="job_delete" type="button" class="btn btn-default" style="float: right; margin-top: 5px;">Delete</button>
             <div style="clear: both;"></div>
           </div>
+          <div id="all_jobs">
+            <button id="job_delete_all" type="button" class="btn btn-default" style="float: right; margin-top: 5px;">Delete All</button>
+            <div style="clear: both;"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -273,7 +277,7 @@ function start() {
   function selectServer() {
     var server = curServer.value;
     serverList.selectId(server);
-    // serverList.scrollToSelect(true);
+    serverList.scrollToSelect(true);
     serverList.update();
     if(!server) {
       d3.select("#server_info").style({
@@ -395,12 +399,15 @@ function start() {
   function selectJob() {
     var job = curJob.value;
     jobList.selectId(job);
-    // jobList.scrollToSelect(true);
+    jobList.scrollToSelect(true);
     jobList.update();
     var j = jobList.getElement(job);
     if(!job || !j) {
       d3.select("#job_info").style({
         "display": "none",
+      });
+      d3.select("#all_jobs").style({
+        "display": null,
       });
       return;
     }
@@ -414,6 +421,9 @@ function start() {
       d3.select("#job_exit").text(data["result"]);
       d3.select("#job_info").style({
         "display": null,
+      });
+      d3.select("#all_jobs").style({
+        "display": "none",
       });
       d3.select("#job_delete").on("click", function() {
         work.post("kill_job", "kill_job/", {
@@ -489,12 +499,28 @@ function start() {
         };
       }));
       jobList.update();
+      if(jobList.elements().length) {
+        d3.select("#job_delete_all").on("click", clickKillAll).classed("disabled", false);
+      } else {
+        d3.select("#job_delete_all").on("click", null).classed("disabled", true);
+      }
       selectJob();
       if(stillWorking) {
         setTimeout(checkJobs, 2000);
       }
     });
   } // checkJobs
+
+  function clickKillAll() {
+    d3.select("#job_delete_all").on("click", null).classed("disabled", true);
+    work.post("kill_all", "kill_all/", {
+      "project": project,
+    }, function(_) {
+      checkJobs();
+      curJob.value = null;
+    });
+  } // clickKillAll
+  d3.select("#job_delete_all").on("click", null).classed("disabled", true);
 
   checkJobs();
 
@@ -509,13 +535,13 @@ function start() {
         "project": project,
         "server": server,
       }, function(data) {
+        d3.select("#job_submit").on("click", clickSubmit).classed("disabled", false);
         console.log("start job:", data["server"], data["job"]);
         checkJobs();
-        d3.select("#job_submit").on("click", clickSubmit).classed("disabled", false);
+        curJob.value = data["job"] + "@" + data["server"];
       });
     });
   } // clickSubmit
-
   d3.select("#job_submit").on("click", clickSubmit);
 
   // File Listing

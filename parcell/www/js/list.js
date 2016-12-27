@@ -74,7 +74,15 @@ function List(sel) {
       "list_li_sel": function(ix) {
         var isSel = hasId && hasId(get(ix), selectId);
         if(isSel && scrollTo) {
-          this.scrollIntoView();
+          var el = this;
+          var body = d3.select("body").node();
+          var oldScroll = body.scrollTop;
+          if(el.scrollIntoViewIfNeeded) {
+            el.scrollIntoViewIfNeeded();
+          } else {
+            el.scrollIntoView();
+          }
+          body.scrollTop = oldScroll;
           scrollTo = false;
         }
         return isSel;

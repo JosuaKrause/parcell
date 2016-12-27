@@ -167,17 +167,19 @@ class Connector(object):
     def submit_job(self, s):
         with self._lock:
             rq = self._rqs[s]
+            path = self._project.path_local
+            cmd = self._project.command
 
-            with open(os.path.join(self._path_local, Connector.SCRIPT_FILE), 'wb') as f:
+            with open(os.path.join(path, Connector.SCRIPT_FILE), 'wb') as f:
                 print("if [ -f ~/.bashrc ]; then\n" \
                       "  . ~/.bashrc\n" \
                       "fi", file=f)
-                print(self._command, file=f)
+                print(cmd, file=f)
 
             while True:
                 try:
                     job_name = "{0}_{1}".format(self._project.name, self._job_number)
-                    return rq.submit(job_name, self._path_local, 'sh -c "source ./{0}"'.format(Connector.SCRIPT_FILE))
+                    return rq.submit(job_name, path, 'sh -c "source ./{0}"'.format(Connector.SCRIPT_FILE))
                 except JobAlreadyExists:
                     pass
                 finally:
@@ -197,6 +199,12 @@ class Connector(object):
             path = str(PosixPath(Connector.DIR_TEMP) / s / j)
             if os.path.exists(path):
                 shutil.rmtree(path)
+
+    def delete_all_jobs(self):
+        with self._lock:
+            for (s, j, _) in self.get_all_jobs():
+                self.delete_job(s, j)
+
 
     def get_job_files(self, s, j, rel_path):
         rq = self._rqs[s]
