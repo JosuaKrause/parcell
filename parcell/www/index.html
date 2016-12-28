@@ -225,7 +225,7 @@ function start() {
 
   // Vitals List
   var vitalsList = new List(d3.select("#vital_list").style({
-    "height": "100px",
+    "height": "105px",
   }));
   vitalsList.hasId(function(el, name) {
     return el["name"] === name;
@@ -306,7 +306,7 @@ function start() {
 
   // Version List
   var versionList = new List(d3.select("#version_list").style({
-    "height": "75px",
+    "height": "100px",
   }));
   versionList.hasId(function(el, version) {
     return el["key"] === version;
@@ -498,10 +498,10 @@ function start() {
       });
       if(initDir) {
         initDir = null;
-        listFiles();
       } else {
         curDir.value = ".";
       }
+      listFiles();
     });
   } // selectJob
 
