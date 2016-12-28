@@ -60,8 +60,8 @@ class Connector(object):
     def get_path(self):
         return self._project.path_local
 
-    def get_command(self):
-        return self._project.command
+    def get_commands(self):
+        return self._project.commands
 
     def get_env(self):
         return self._project["env"].name
@@ -184,11 +184,13 @@ class Connector(object):
             result = rcf.ret
         return Connector._STATUS.get(status, "?"), result
 
-    def submit_job(self, s):
+    def submit_job(self, s, cmd):
+        if not cmd.strip():
+            raise ValueError("cannot execute empty command: {0}".format(cmd))
         with self._lock:
             rq = self._rqs[s]
             path = self._project.path_local
-            cmd = self._project.command
+            self._project.add_cmd(cmd)
 
             with open(os.path.join(path, Connector.SCRIPT_FILE), 'wb') as f:
                 print(cmd, file=f)

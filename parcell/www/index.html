@@ -7,6 +7,7 @@
   <link rel="stylesheet" type="text/css" href="lib/jk-js/lib/bootstrap/css/bootstrap.min.css">
   <link rel="stylesheet" type="text/css" href="lib/font-awesome/css/font-awesome.min.css">
   <script src="lib/jk-js/lib/d3/d3.min.js" charset="utf-8"></script>
+  <script src="lib/jk-js/jkjs/select.js" charset="utf-8"></script>
   <script src="lib/jk-js/jkjs/cell.js" charset="utf-8"></script>
   <script src="lib/jk-js/jkjs/util.js" charset="utf-8"></script>
   <script src="js/worker.js" charset="utf-8"></script>
@@ -105,7 +106,7 @@
           </div>
           <div style="clear: both;">
             <span style="float: left;">Cmd.:</span>
-            <code style="float: right;" id="cmd"></code>
+            <span style="float: right;" id="cmd"></span>
           </div>
         </div>
       </div>
@@ -212,6 +213,30 @@ function start() {
     net.getProject(urlArgs);
   });
 
+  // Command List
+
+  var cmd = new jkjs.Cell("");
+  cmd.addChangeListener(function() {
+    enableSubmit();
+  });
+
+  var cmdInput = new jkjs.InputText(d3.select("#cmd"), cmd);
+  cmdInput.select().style({
+    "font-family": "Menlo,Monaco,Consolas,\"Courier New\",monospace",
+  }).on("keypress", function() {
+    if(d3.event.keyCode === 13) {
+      var cs = cmdInput.select().node();
+      cmd.value = cs.value;
+      if(cmd.value.trim()) {
+        clickSubmit();
+        cs.blur();
+      }
+    }
+  });
+  function setCmds(ccs) {
+    cmd.value = ccs[0];
+  } // setCmds
+
   // Project Info
 
   net.get("project_info", "project_info/", {
@@ -219,8 +244,8 @@ function start() {
   }, function(data) {
     d3.select("#project").text(data["project"]);
     d3.select("#path").text(data["path"]);
-    d3.select("#cmd").text(data["command"]);
     d3.select("#env").text(data["env"]);
+    setCmds(data["cmds"]);
   });
 
   // Vitals List
@@ -585,8 +610,12 @@ function start() {
 
   checkJobs();
 
+  var duringSubmit = false;
   function clickSubmit() {
-    d3.select("#job_submit").on("click", null).classed("disabled", true);
+    var cc = cmd.value;
+    if(!cc.trim()) return;
+    duringSubmit = true;
+    enableSubmit();
     work.post("best", "best_server/", {
       "project": project,
     }, function(best) {
@@ -595,15 +624,28 @@ function start() {
       work.post("submit", "start/", {
         "project": project,
         "server": server,
+        "cmd": cc,
       }, function(data) {
-        d3.select("#job_submit").on("click", clickSubmit).classed("disabled", false);
+        duringSubmit = false;
+        enableSubmit();
+        setCmds(data["cmds"]);
         console.log("start job:", data["server"], data["job"]);
         checkJobs();
         curJob.value = data["job"] + "@" + data["server"];
       });
     });
   } // clickSubmit
-  d3.select("#job_submit").on("click", clickSubmit);
+
+  function enableSubmit() {
+    var cc = cmd.value;
+    var jobSubmit = d3.select("#job_submit");
+    if(!cc.trim() || duringSubmit) {
+      jobSubmit.on("click", null).classed("disabled", true);
+    } else {
+      jobSubmit.on("click", clickSubmit).classed("disabled", null);
+    }
+  } // enableSubmit
+  enableSubmit();
 
   // File Listing
 

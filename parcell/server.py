@@ -68,7 +68,7 @@ def get_server(addr, port, cache):
         return {
             "project": project,
             "path": conn.get_path(),
-            "command": conn.get_command(),
+            "cmds": conn.get_commands(),
             "env": conn.get_env(),
         }
 
@@ -96,11 +96,14 @@ def get_server(addr, port, cache):
     def json_start(args):
         project = args["project"]
         server = args["server"]
+        cmd = args["cmd"]
         conn = get_connector(project)
+        job = conn.submit_job(server, cmd)
         return {
             "project": project,
             "server": server,
-            "job": conn.submit_job(server),
+            "job": job,
+            "cmds": conn.get_commands(),
         }
 
     @server.json_worker(prefix + '/jobs')

@@ -156,6 +156,7 @@ class Config(object):
         config = self.get_config_dir()
         if not os.path.exists(config):
             os.makedirs(config)
+        obj["version"] = len(self.get_upgrade_list())
         _write_json(self._get_config_path(config), obj)
 
     def get_config_dir(self):
@@ -348,7 +349,7 @@ class ProjectConfig(Config):
     def read_object(self, obj):
         return {
             "local": obj["local"],
-            "cmd": obj["cmd"],
+            "cmds": obj["cmds"],
             "env": get_env(obj["env"]),
             "servers": [ get_server(s) for s in obj["servers"] ],
         }
@@ -356,7 +357,7 @@ class ProjectConfig(Config):
     def write_object(self, obj):
         return {
             "local": obj["local"],
-            "cmd": obj["cmd"],
+            "cmds": obj["cmds"],
             "env": obj["env"].name,
             "servers": [ s.name for s in obj["servers"] ],
         }
@@ -366,12 +367,26 @@ class ProjectConfig(Config):
         return self["local"]
 
     @property
-    def command(self):
-        return self["cmd"]
+    def commands(self):
+        return self["cmds"]
+
+    def add_cmd(self, cmd):
+        cmd = cmd.strip()
+        if not cmd:
+            return
+        if cmd in self["cmds"] and cmd == self["cmds"][0]:
+            return
+        self["cmds"] = [ cmd ] + [ c for c in self["cmds"] if c != cmd ]
 
     @property
     def servers(self):
         return dict( (s.name, s) for s in self["servers"] )
+
+@upgrade(UPGRADE_PROJECT, 0)
+def up_p0(obj):
+    obj["cmds"] = [ obj["cmd"] ]
+    del obj["cmd"]
+    return obj
 
 ALL_PROJECTS = {}
 def get_project(p):
@@ -608,9 +623,10 @@ def add_project(name):
         msg("Project '{0}' already exists!", name)
         return False
     msg("Create project '{0}'.", name)
-    project = {}
+    project = {
+        "cmds": [],
+    }
     project["local"] = _ask("Project root", default=os.path.join(DIR_PROJECT, name))
-    project["cmd"] = _ask("Run command")
     _, env, _ = _ask_choice("Environment", of=get_envs())
     project["env"] = env
     project["servers"] = _ask_server_list()
