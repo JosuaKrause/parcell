@@ -6,6 +6,7 @@ Features:
 * Select new jobs in list
 * Scroll selected jobs into view
 * Save JSON files if config changed (#15)
+* Allow for other vital criteria (#10)
 
 Bugfixes:
 * Be more clear about why connections do not succeed (#20)

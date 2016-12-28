@@ -57,7 +57,7 @@ def get_server(addr, port, cache):
         return {
             "servers": [ {
                 "server": s,
-                "cpu": float('nan'),
+                "vital": float('nan'),
             } for s in get_servers_info() ] if project is None else get_connector(project).get_servers_info(),
         }
 

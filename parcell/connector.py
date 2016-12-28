@@ -67,7 +67,10 @@ class Connector(object):
         return self._project["env"].name
 
     def _get_env(self, rq, chk):
-        name, cmd, regex, line = chk
+        if len(chk) == 4:
+            name, cmd, regex, line = chk
+        else:
+            name, cmd, regex, line, _ = chk
         output = rq.check_output(cmd)
         oarr = output.split("\n")
         if line >= len(oarr):
@@ -77,15 +80,18 @@ class Connector(object):
             raise ValueError("unexpected mismatch {0} not in:\n{1}".format(regex.pattern, oarr[line]))
         return name, m.group(1)
 
-    def get_cpu(self, rq):
-        for cpu in self._project["env"]["cpus"]:
-            _, c = self._get_env(rq, cpu)
-            if c:
-                try:
-                    return float(c)
-                except TypeError:
-                    pass
-        return float('nan')
+    def get_vital_value(self, rq, chk):
+        name, c = self._get_env(rq, chk)
+        asc = chk[4]
+        if c:
+            try:
+                return name, float(c), asc
+            except TypeError:
+                pass
+        return name, float('nan'), asc
+
+    def get_vitals(self, rq):
+        return [ self.get_vital_value(rq, b) for b in self._project["env"]["vital"] ]
 
     def get_servers(self):
         return [ s.name for s in self._project["servers"] ]
@@ -93,7 +99,7 @@ class Connector(object):
     def get_servers_info(self):
         return [ {
             "server": s,
-            "cpu": self.get_cpu(self._rqs[s]),
+            "vital": self.get_vital_value(self._rqs[s], self._project["env"]["vital"][0])[1],
         } for s in self.get_servers() ]
 
     def get_server_stats(self, s):
@@ -102,25 +108,39 @@ class Connector(object):
         return {
             "name": server["hostname"],
             "versions": [ self._get_env(rq, chk) for chk in self._project["env"]["versions"] ],
-            "cpu": self.get_cpu(rq),
+            "vitals": self.get_vitals(self._rqs[s]),
         }
 
-    def get_all_cpus(self):
-        return [ (s, self.get_cpu(self._rqs[s])) for s in self.get_servers() ]
+    def get_all_vitals(self):
+        return [ (s, self.get_vitals(self._rqs[s])) for s in self.get_servers() ]
 
     def get_best_server(self):
         servers = self.get_servers()
         if len(servers) < 2:
             return servers[0] if servers else None
-        best_s = None
-        best_cpu = float('nan')
-        for (s, cpu) in self.get_all_cpus():
-            if math.isnan(best_cpu) or cpu < best_cpu:
-                best_s = s
-                best_cpu = cpu
-        if math.isnan(best_cpu):
-            return None
-        return best_s
+        all_vitals = self.get_all_vitals()
+        cur_ix = 0
+        best_s = []
+        best_num = float('nan')
+        while len(best_s) < 2 and cur_ix < len(all_vitals[0][1]):
+            for (s, cur) in all_vitals:
+                _, num, asc = cur[cur_ix]
+                if math.isnan(best_num):
+                    best_s = [ s ]
+                    best_num = num
+                elif num == best_num:
+                    best_s.append(s)
+                else:
+                    if asc:
+                        if num < best_num:
+                            best_s = [ s ]
+                            best_num = num
+                    else:
+                        if num > best_num:
+                            best_s = [ s ]
+                            best_num = num
+            cur_ix += 1
+        return best_s[0] if len(best_s) > 0 else None
 
     _STATUS = dict([
         (RemoteQueue.JOB_DONE, "done"),

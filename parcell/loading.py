@@ -42,6 +42,14 @@ UPGRADE_ENV = []
 UPGRADE_SERVER = []
 UPGRADE_PROJECT = []
 
+def upgrade(array, version):
+    def wrapper(func):
+        if len(array) != version:
+            raise ValueError("upgrade definition in wrong order {0} != {1}".format(len(array), version))
+        array.append(func)
+        return func
+    return wrapper
+
 def _get_config_list(config, default=None):
     if not os.path.exists(config):
         os.makedirs(config)
@@ -216,7 +224,7 @@ class EnvConfig(Config):
 
     def read_object(self, obj):
 
-        def get(field):
+        def get(field, version):
             res = []
             if field in obj:
                 for e in obj[field]:
@@ -224,29 +232,52 @@ class EnvConfig(Config):
                     cmd = e["cmd"]
                     regex = re.compile(e.get("regex", DEFAULT_REGEX))
                     line = int(e.get("line", DEFAULT_LINE))
-                    res.append((name, cmd, regex, line))
+                    if not version:
+                        asc = e.get("asc", True)
+                        res.append((name, cmd, regex, line, asc))
+                    else:
+                        res.append((name, cmd, regex, line))
             return res
 
         return {
-            "versions": get("versions"),
-            "cpus": get("cpus"),
+            "versions": get("versions", True),
+            "vital": get("vital", False),
         }
 
     def write_object(self, obj):
 
-        def conv(e):
-            name, cmd, regex, line = e
-            res = {
-                "name": name,
-                "cmd": cmd,
-            }
+        def conv(e, version):
+            if not version:
+                name, cmd, regex, line, asc = e
+                res = {
+                    "name": name,
+                    "cmd": cmd,
+                    "asc": asc,
+                }
+            else:
+                name, cmd, regex, line = e
+                res = {
+                    "name": name,
+                    "cmd": cmd,
+                }
             if regex.pattern != DEFAULT_REGEX:
                 res["regex"] = regex.pattern
             if line != DEFAULT_LINE:
                 res["line"] = line
             return res
 
-        return dict((k, [ conv(e) for e in es ]) for (k, es) in obj.items())
+        return {
+            "versions": [ conv(e, True) for e in obj["versions"] ],
+            "vital": [ conv(e, False) for e in obj["vital"] ],
+        }
+
+@upgrade(UPGRADE_ENV, 0)
+def up_e0(obj):
+    obj["vital"] = obj["cpus"]
+    del obj["cpus"]
+    for o in obj["vital"]:
+        o["asc"] = True
+    return obj
 
 ALL_ENVS = {}
 def get_env(e):

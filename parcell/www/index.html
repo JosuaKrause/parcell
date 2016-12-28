@@ -134,13 +134,8 @@
               <span style="float: left;">Hostname:</span>
               <code style="float: right;" id="server_name"></code>
             </div>
-            <div class="progress" id="cpu_frame" style="width: 100%; background: white;">
-              <div class="progress-bar" id="cpu_outer" style="width: 0;">
-                <span class="sr-only" id="cpu_inner">0%</span>
-              </div>
-              CPU
-            </div>
-            <div id="version_list"></div>
+            <div style="clear: both;" id="vital_list"></div>
+            <div style="clear: both;" id="version_list"></div>
           </div>
         </div>
       </div>
@@ -228,6 +223,87 @@ function start() {
     d3.select("#env").text(data["env"]);
   });
 
+  // Vitals List
+  var vitalsList = new List(d3.select("#vital_list").style({
+    "height": "100px",
+  }));
+  vitalsList.hasId(function(el, name) {
+    return el["name"] === name;
+  });
+  vitalsList.onEnter(function(sel, get) {
+    var bar = sel.append("div").classed("progress", true).style({
+      "width": "100%",
+      "background": "white",
+    }).append("div").classed("progress-bar", true);
+    bar.append("span").classed("sr-only", true);
+    bar.append("span").classed("bar-name", true)
+  });
+  vitalsList.onUpdate(function(sel, get) {
+    sel.selectAll(".progress").attr({
+      "title": function(ix) {
+        var v = get(ix);
+        return Number.isNaN(v["value"]) ? null : v["value"] + "%";
+      },
+    }).style({
+      "margin-bottom": 0,
+    });
+
+    function barColor(v) {
+      var color;
+      var val = v["value"];
+      var asc = v["asc"];
+      if(Number.isNaN(val)) {
+        color = 3;
+      } else if(asc ? val > 75 : val < 25) {
+        color = 2;
+      } else if(asc ? val > 50 : val < 50) {
+        color = 1;
+      } else {
+        color = 0;
+      }
+      return color;
+    } // barColor
+
+    sel.selectAll(".progress-bar").classed({
+      "progress-bar-success": function(ix) {
+        return barColor(get(ix)) === 0;
+      },
+      "progress-bar-warning": function(ix) {
+        return barColor(get(ix)) === 1;
+      },
+      "progress-bar-danger": function(ix) {
+        return barColor(get(ix)) === 2;
+      },
+      "progress-bar-striped": function(ix) {
+        return barColor(get(ix)) === 3;
+      },
+    }).style({
+      "filter": function(ix) {
+        var v = get(ix);
+        return barColor(v) === 3 ? "grayscale(100%)" : null;
+      },
+      "width": function(ix) {
+        var v = get(ix);
+        return Number.isNaN(v["value"]) ? "100%" : v["value"] + "%";
+      },
+    }).attr({
+      "title": function(ix) {
+        var v = get(ix);
+        return Number.isNaN(v["value"]) ? null : v["value"] + "%";
+      },
+    });
+    sel.selectAll(".sr-only").text(function(ix) {
+      var v = get(ix);
+      return Number.isNaN(v["value"]) ? "" : v["value"] + "%";
+    });
+    sel.selectAll(".bar-name").text(function(ix) {
+      var v = get(ix);
+      return v["name"];
+    }).style({
+      "filter": "drop-shadow(0 0 3px rgb(0,0,0))",
+    });
+  });
+
   // Version List
   var versionList = new List(d3.select("#version_list").style({
     "height": "75px",
@@ -295,32 +371,14 @@ function start() {
       var stats = data["stats"];
       d3.select("#server_id").text(data["server"]);
       d3.select("#server_name").text(stats["name"]);
-      var cpu = +stats["cpu"];
-      var cpuColor;
-      if(Number.isNaN(cpu)) {
-        cpuColor = 3;
-        cpu = 100;
-      } else if(cpu > 75) {
-        cpuColor = 2;
-      } else if(cpu > 50) {
-        cpuColor = 1;
-      } else {
-        cpuColor = 0;
-      }
-      d3.select("#cpu_outer").classed({
-        "progress-bar-success": cpuColor === 0,
-        "progress-bar-warning": cpuColor === 1,
-        "progress-bar-danger": cpuColor === 2,
-        "progress-bar-striped": cpuColor === 3,
-      }).style({
-        "width": cpu + "%",
-      }).attr({
-        "title": cpu + "%",
-      });
-      d3.select("#cpu_frame").attr({
-        "title": cpu + "%",
-      });
-      d3.select("#cpu_inner").text(cpu + "%");
+      vitalsList.elements(stats["vitals"].map(function(b) {
+        return {
+          "name": b[0],
+          "value": +b[1],
+          "asc": b[2],
+        };
+      }));
+      vitalsList.update();
       versionList.elements(stats["versions"].map(function(v) {
         return {
           "key": v[0],
@@ -349,7 +407,7 @@ function start() {
       "text-overflow": "ellipsis",
       "float": "left",
     });
-    sel.append("span").classed("server_cpu", true).style({
+    sel.append("span").classed("server_value", true).style({
       "float": "right",
     });
     sel.append("div").style({
@@ -366,9 +424,9 @@ function start() {
         return s["server"];
       },
     });
-    sel.selectAll(".server_cpu").text(function(ix) {
+    sel.selectAll(".server_value").text(function(ix) {
       var s = get(ix);
-      return s["cpu"];
+      return s["value"];
     });
   });
 
@@ -376,10 +434,10 @@ function start() {
     "project": project,
   }, function(data) {
     serverList.elements(data["servers"].map(function(s) {
-      var cpu = +s["cpu"];
+      var value = +s["vital"];
       return {
         "server": s["server"],
-        "cpu": Number.isNaN(cpu) ? "" : cpu + "%",
+        "value": Number.isNaN(value) ? "" : value + "%",
       };
     }));
     serverList.update();
