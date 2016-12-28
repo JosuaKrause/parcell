@@ -211,6 +211,9 @@ function start() {
 
   d3.select("#project_select").on("click", function() {
     urlArgs["project"] = null;
+    urlArgs["server"] = null;
+    urlArgs["job"] = null;
+    urlArgs["dir"] = null;
     net.getProject(urlArgs);
   });
 

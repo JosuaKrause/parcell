@@ -112,7 +112,17 @@ function Net(statusSel) {
             error();
             return console.warn(err);
           }
-          s["cb"](data["response"]);
+          var err = true;
+          try {
+            s["cb"](data["response"]);
+            err = false;
+          } finally {
+            if(err) {
+              error();
+            } else {
+              normal();
+            }
+          }
         });
       } else if(s["method"] === "POST") {
         d3.json(s["url"]).header("Content-Type", "application/json").post(s["obj"], function(err, data) {

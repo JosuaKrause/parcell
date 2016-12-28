@@ -104,7 +104,7 @@ def _forward_tunnel(s, local_port, via, remote):
                         print("The authenticity of host {0} could not be established!".format(hostname))
                         print("Please make sure you can connect to the server by running\n")
                         print("ssh -p {0} {1}@{2} hostname\n".format(via.get("port", 22), username, hostname))
-                        print("and then retry again.")
+                        print("and then try again.")
                         _TUNNELS[s] = -3
                         return
                     elif scenario == 1:

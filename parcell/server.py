@@ -172,7 +172,10 @@ def get_server(addr, port, cache):
         job = args["job"]
         req_file = args["file"]
         conn = get_connector(project)
-        with open(conn.get_job_file(server, job, req_file), 'rb') as f:
+        filename = conn.get_job_file(server, job, req_file)
+        if filename is None:
+            return None
+        with open(filename, 'rb') as f:
             return f.read()
 
     def complete_cache_clear(args, text):

@@ -171,18 +171,13 @@ class Connector(object):
             cmd = self._project.command
 
             with open(os.path.join(path, Connector.SCRIPT_FILE), 'wb') as f:
-                print("if [ -f /etc/profile ]; then\n" \
-                      "  . /etc/profile\n" \
-                      "fi", file=f)
-                print("if [ -f ~/.bashrc ]; then\n" \
-                      "  . ~/.bashrc\n" \
-                      "fi", file=f)
                 print(cmd, file=f)
 
             while True:
                 try:
                     job_name = "{0}_{1}".format(self._project.name, self._job_number)
-                    return rq.submit(job_name, path, Connector.SCRIPT_FILE)
+                    call = "sh -l ./{0}".format(Connector.SCRIPT_FILE)
+                    return rq.submit(job_name, path, call)
                 except JobAlreadyExists:
                     pass
                 finally:
@@ -229,7 +224,10 @@ class Connector(object):
         if not os.path.exists(path_str):
             os.makedirs(path_str)
         if not os.path.exists(res) or status == RemoteQueue.JOB_RUNNING:
-            rq.download(j, [ req_file ], destination=path_str)
+            try:
+                rq.download(j, [ req_file ], destination=path_str)
+            except JobNotFound:
+                return None
         return res
 
 if __name__ == '__main__':

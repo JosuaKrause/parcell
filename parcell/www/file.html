@@ -38,6 +38,9 @@
         <div id="content"></div>
       </div>
     </div>
+    <div class="col-md-4">
+      <span id="status"></span>
+    </div>
   </div>
 </div>
 <script>
@@ -125,7 +128,6 @@ function start() {
       });
     } else {
       net.getPlain("file", "file/", args, function(text) {
-        console.log(text);
         var lines = text.split("\n");
         var ixs = lines.map(function(l, ix) {
           return ix;
@@ -184,7 +186,8 @@ function start() {
       "job": job,
     }, function(data) {
       get_file();
-      if(+data["status"]["status"] === 2) {
+      var status = data["status"];
+      if(status !== "done" && status !== "error") {
         setTimeout(get_job_status, 1000);
       }
     });
