@@ -136,6 +136,8 @@ class Config(object):
             res = json.load(f)
         res, chg = self._check_version(res)
         if chg or is_new:
+            if not is_new:
+                os.rename(path, path + ".old")
             self._write(res)
         return self.read_object(res)
 
