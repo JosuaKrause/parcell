@@ -9,7 +9,10 @@ import sys
 import json
 import time
 import atexit
+import base64
 import getpass
+import hashlib
+import binascii
 import paramiko
 import threading
 import traceback
@@ -34,6 +37,8 @@ DIR_SERVER = "servers"
 DIR_PROJECT = "projects"
 DIR_REMOTE_TEJ = "~/.parcell"
 EXT = ".json"
+
+LOCALHOST = "127.0.0.1"
 
 DEFAULT_REGEX = "(.*)"
 DEFAULT_LINE = 0
@@ -294,6 +299,8 @@ SERVER_SKIP_KEYS = frozenset([
     "tunnel",
     "tunnel_port",
     "needs_tunnel_pw",
+    "key",
+    "version",
 ])
 class ServerConfig(Config):
 
@@ -317,14 +324,47 @@ class ServerConfig(Config):
     def get_destination_obj(self, front):
         res = self.get_obj(SERVER_SKIP_KEYS)
         if front and "tunnel_port" in self:
-            res["hostname"] = "127.0.0.1"
+            res["hostname"] = LOCALHOST
             res["port"] = self["tunnel_port"]
         return res
 
     def __setitem__(self, key, value):
         chg = self.has_change()
         super(ServerConfig, self).__setitem__(key, value)
-        self.set_change(chg)
+        if key == "password":
+            self.set_change(chg)
+
+    def check_key(self, hostname, key_type, key_base64, key_fp):
+        if hostname != self["hostname"]:
+            raise ValueError("mismatching hostname '{0}' != '{1}'".format(hostname, self["hostname"]))
+        kobj = self.get("key", {})
+        known_base64 = kobj.get("base64", None)
+        if known_base64 is None:
+            replay_fp = hashlib.md5(base64.decodestring(key_base64)).hexdigest()
+            if replay_fp != key_fp:
+                raise ValueError("Error encoding fingerprint of '{0}'! {1} != {2}\n{3}: {4}".format(hostname, replay_fp, key_fp, key_type, key_base64))
+            msg("The authenticity of host '{0}' can't be established.", hostname)
+            pretty_fp = ':'.join(a + b for (a, b) in zip(key_fp[::2], key_fp[1::2]))
+            msg("{0} key fingerprint is {1}.", key_type, pretty_fp)
+            if not _ask_yesno("Are you sure you want to continue connecting?"):
+                sys.exit(1)
+            self["key"] = {
+                "type": key_type,
+                "base64": key_base64,
+            }
+        # FIXME: there might be a better way
+        if key_type != self["key"]["type"]:
+            raise ValueError("mismatching key type for '{0}'. '{1}' != '{2}'".format(hostname, key_type, self["key"]["type"]))
+        if key_base64 != self["key"]["base64"]:
+            raise ValueError("mismatching {0} key for '{1}'. '{2}' != '{3}'".format(key_type, hostname, key_base64, self["key"]["base64"]))
+
+@upgrade(UPGRADE_SERVER, 0)
+def up_s0(obj):
+    obj["key"] = {
+        "type": None,
+        "base64": None,
+    }
+    return obj
 
 ALL_SERVERS = {}
 def get_server(s):
@@ -424,7 +464,7 @@ def ask_password(user, address):
             res = _GLOBAL_PASSWORD
             auto = True
         else:
-            res = getpass.getpass("password for {0}@{1}:".format(user, address))
+            res = _getpass("password for {0}@{1}:".format(user, address))
             if _ASK_REUSE_PRIMED is not None:
                 _ASK_REUSE_PRIMED = None
                 _ASK_REUSE = False
@@ -448,18 +488,29 @@ def _setup_tunnel(server):
             tunnel["password"] = ask_password(tunnel["username"], tunnel["hostname"])
         start_tunnel(s, tunnel, server.get_destination_obj(False), server["tunnel_port"])
 
+class LocalAddPolicy(paramiko.client.MissingHostKeyPolicy):
+
+    def __init__(self, s_obj):
+        self.s_obj = s_obj
+        super(LocalAddPolicy, self).__init__()
+
+    def missing_host_key(self, client, hostname, key):
+        server = self.s_obj
+        if "tunnel_port" in server and hostname == "[{0}]:{1}".format(LOCALHOST, server["tunnel_port"]):
+            hostname = server["hostname"]
+        server.check_key(hostname, key.get_name(), key.get_base64(), binascii.hexlify(key.get_fingerprint()))
+
 class TunnelableRemoteQueue(RemoteQueue):
+
     def __init__(self, *args, **kwargs):
         # needs to be before actual constructor because
         # _ssh_client is called from within
-        self.is_tunnel = kwargs.pop("is_tunnel", False)
-        RemoteQueue.__init__(self, *args, **kwargs)
+        self.s_obj = kwargs.pop("s_obj")
+        super(TunnelableRemoteQueue, self).__init__(*args, **kwargs)
 
     def _ssh_client(self):
-         ssh = paramiko.SSHClient()
-         ssh.load_system_host_keys()
-         policy = paramiko.RejectPolicy() if not self.is_tunnel else paramiko.WarningPolicy()
-         ssh.set_missing_host_key_policy(policy)
+         ssh = super(TunnelableRemoteQueue, self)._ssh_client()
+         ssh.set_missing_host_key_policy(LocalAddPolicy(self.s_obj))
          return ssh
 
 ALL_REMOTES = {}
@@ -475,12 +526,15 @@ def get_remote(server):
             dest = server.get_destination_obj(True)
             while s not in ALL_REMOTES:
                 try:
-                    ALL_REMOTES[s] = TunnelableRemoteQueue(dest, remote_dir, is_tunnel=("tunnel" in server))
+                    ALL_REMOTES[s] = TunnelableRemoteQueue(dest, remote_dir, s_obj=server)
                 except paramiko.ssh_exception.NoValidConnectionsError as e:
                     if e.errno is None:
                         if "tunnel" in server:
                             if check_permission_denied(s):
                                 msg("Incorrect password for {0}.", server["tunnel"])
+                                sys.exit(1)
+                            if not check_tunnel(s):
+                                msg("Error starting tunnel! Re-run with -vv for more information.")
                                 sys.exit(1)
                             time.sleep(1)
                     else:
@@ -510,8 +564,22 @@ def _check_project(name):
     p.set_change(True)
     p.close()
 
+ALLOW_ASK = True
+def allow_ask(allow):
+    global ALLOW_ASK
+    ALLOW_ASK = allow
+
 def _getline(line):
+    if not ALLOW_ASK:
+        msg("Not allowed to use prompt! Terminating!\n{0}--", line)
+        sys.exit(1)
     return raw_input(line).rstrip("\r\n")
+
+def _getpass(line):
+    if not ALLOW_ASK:
+        msg("Not allowed to use prompt! Terminating!\n{0}--", line)
+        sys.exit(1)
+    return getpass.getpass(line)
 
 def _ask(line, default=None, must=True):
     line = "{0}{1}: ".format(line, '' if default is None else " ({0})".format(default))
