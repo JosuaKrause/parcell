@@ -1,6 +1,9 @@
 Changelog
 =========
 
+0.2.0 (2016-12-28)
+------------------
+
 Features:
 * "Delete All" button
 * Select new jobs in list
