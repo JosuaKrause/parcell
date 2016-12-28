@@ -80,6 +80,13 @@
     color: black;
     background: #e7e7e7;
   }
+
+  #cmd {
+    cursor: text !important;
+    background-color: #fff !important;
+    border-color: #ccc !important;
+    color: #000 !important;
+  }
   </style>
 </head>
 <body onload="start()">
@@ -105,8 +112,13 @@
             <code style="float: right;" id="path"></code>
           </div>
           <div style="clear: both;">
-            <span style="float: left;">Cmd.:</span>
-            <span style="float: right;" id="cmd"></span>
+            <span style="float: left;">Command:</span>
+            <div class="dropdown btn-group" style="float: right;" id="cmd_list">
+              <span class="btn btn-default" id="cmd"></span>
+              <button class="btn btn-default dropdown-toggle" type="button" id="cmd_list_btn">
+                <span class="caret"></span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -218,23 +230,110 @@ function start() {
   var cmd = new jkjs.Cell("");
   cmd.addChangeListener(function() {
     enableSubmit();
+    cmdList.selectId(cmd.value);
+    cmdList.update();
   });
 
-  var cmdInput = new jkjs.InputText(d3.select("#cmd"), cmd);
+  var cmdListSel = d3.select("#cmd_list").on("click", function() {
+    cmdInput.select().node().focus();
+  });
+  var cmdBuffer = "";
+  function setOpenCmdList(open) {
+    cmdListSel.classed("open", open);
+    if(open) {
+      cmdBuffer = cmdInput.select().node().value;
+      if(cmdList.elements().indexOf(cmdBuffer) >= 0) {
+        cmdBuffer = "";
+      }
+      cmdInput.select().node().focus();
+    }
+  } // setOpenCmdList
+
+  function moveCmdCursor(down) {
+    var list = cmdList.elements();
+    if(!list.length) return;
+    var cmdInputEl = cmdInput.select().node();
+    if(!cmdListSel.classed("open")) {
+      if(!down) return;
+      setOpenCmdList(true);
+      cmd.value = cmdInputEl.value;
+      return;
+    }
+    var ix = list.indexOf(cmdInputEl.value);
+    ix += down ? 1 : -1;
+    if(ix < 0) {
+      cmd.value = cmdBuffer;
+    } else {
+      cmd.value = list[Math.min(ix, list.length - 1)];
+    }
+  } // moveCmdCursor
+
+  var cmdList = new List(cmdListSel);
+  cmdList.listSel().classed("dropdown-menu", true);
+  cmdListSel.style({
+    "overflow-y": null,
+  });
+  d3.select("#cmd_list_btn").on("click", function() {
+    setOpenCmdList(!cmdListSel.classed("open"));
+    d3.event.stopPropagation();
+  });
+  d3.select("body").on("click", function() {
+    setOpenCmdList(false);
+  });
+  cmdList.hasId(function(el, name) {
+    return el === name;
+  });
+  cmdList.onClick(function(cc) {
+    cmd.value = cc;
+    cmdInput.select().node().focus();
+    setOpenCmdList(false);
+  });
+  cmdList.onEnter(function(sel, get) {
+  });
+  cmdList.onUpdate(function(sel, get) {
+    sel.text(function(ix) {
+      return get(ix);
+    });
+  });
+
+  var cmdInput = new jkjs.InputText(d3.select("#cmd").style({
+    "padding": "3px",
+  }), cmd);
   cmdInput.select().style({
-    "font-family": "Menlo,Monaco,Consolas,\"Courier New\",monospace",
+    "font-family": 'Menlo, Monaco, Consolas, "Courier New", monospace',
   }).on("keypress", function() {
-    if(d3.event.keyCode === 13) {
-      var cs = cmdInput.select().node();
+    var code = d3.event.code;
+    if(code === "Enter") {
+      if(cmdListSel.classed("open")) {
+        setOpenCmdList(false);
+        return;
+      }
+      var cs = this;
       cmd.value = cs.value;
       if(cmd.value.trim()) {
         clickSubmit();
         cs.blur();
       }
     }
+  }).on("keydown", function() {
+    var code = d3.event.code;
+    if(code === "ArrowDown") {
+      moveCmdCursor(true);
+    } else if(code === "ArrowUp") {
+      moveCmdCursor(false);
+    } else if(code === "Escape") {
+      setOpenCmdList(false);
+      cmd.value = cmdBuffer;
+    }
+  }).on("input", function() {
+    if(cmdListSel.classed("open")) {
+      cmdBuffer = this.value;
+    }
   });
   function setCmds(ccs) {
     cmd.value = ccs[0];
+    cmdList.elements(ccs);
+    cmdList.update();
   } // setCmds
 
   // Project Info

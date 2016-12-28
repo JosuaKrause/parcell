@@ -55,6 +55,10 @@ function List(sel) {
     }, null);
   };
 
+  this.listSel = function() {
+    return list;
+  };
+
   this.update = function() {
     var ixs = elements.map(function(_, ix) {
       return ix;
