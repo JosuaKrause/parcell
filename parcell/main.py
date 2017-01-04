@@ -30,14 +30,27 @@ def _start(args):
     server.start_server(args.a, args.p, args.quota, args.ram_quota, args.reuse_pw)
 
 def _list(args):
-    for p in loading.get_projects():
-        print(p, file=sys.stdout)
+    for s in loading.get_servers():
+        print(s, file=sys.stdout)
 
 def _add(args):
     loading.set_password_reuse(args.reuse_pw)
     loading.set_msg(loading.simple_msg)
     if not loading.add_project(args.name):
         sys.exit(2)
+
+def _delete(args):
+    loading.set_password_reuse(args.reuse_pw)
+    loading.set_msg(loading.simple_msg)
+    if args.name is None:
+        if not loading.confirm_critical("This will delete all local and remote data.", "PARCELL"):
+            sys.exit(3)
+        loading.remove_all()
+    else:
+        name = args.name
+        if not loading.confirm_critical("This will delete all local and remote data of the server.", name.upper()):
+            sys.exit(3)
+        loading.remove_server(name)
 
 def main():
     # root parser
@@ -53,8 +66,14 @@ def main():
     parser_add.set_defaults(func=_add)
 
     # list action
-    parser_list = subparsers.add_parser('list', help="lists all projects")
+    parser_list = subparsers.add_parser('list', help="lists all servers")
     parser_list.set_defaults(func=_list)
+
+    # delete action
+    parser_delete = subparsers.add_parser('delete', help="delete a specified server or everything")
+    parser_delete.add_argument('--reuse-pw', action='store_true', dest='reuse_pw', help="only ask for one password")
+    parser_delete.add_argument('name', default=None, nargs='?', help="the name of the server to delete if empty everything gets deleted")
+    parser_delete.set_defaults(func=_delete)
 
     # start action
     parser_start = subparsers.add_parser('start', help="starts the parcell web interface")

@@ -9,10 +9,13 @@ import time
 import threading
 import webbrowser
 
-from connector import get_envs, get_servers, get_projects, get_connector, init_passwords, set_password_reuse, set_msg
+from connector import get_envs, get_servers, get_projects, \
+                      get_connector, init_passwords, set_password_reuse, \
+                      set_msg
 from loading import allow_ask
 
-from quick_server import create_server, msg, setup_restart, has_been_restarted, is_original
+from quick_server import create_server, msg, setup_restart, \
+                         has_been_restarted, is_original
 from quick_cache import QuickCache
 
 set_msg(msg)

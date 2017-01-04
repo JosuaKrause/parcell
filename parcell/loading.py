@@ -10,13 +10,15 @@ import json
 import time
 import atexit
 import base64
+import shutil
 import getpass
 import hashlib
 import binascii
 import paramiko
 import threading
 import traceback
-from tej import RemoteQueue, parse_ssh_destination
+from rpaths import PosixPath
+from tej import RemoteQueue, parse_ssh_destination, QueueDoesntExist, RemoteCommandFailure, JobNotFound
 
 from tunnel import start_tunnel, check_tunnel, check_permission_denied
 
@@ -35,8 +37,10 @@ DIR_ENV_DEFAULT = os.path.join(DEFAULT_BASE, "default_envs")
 DIR_ENV = "envs"
 DIR_SERVER = "servers"
 DIR_PROJECT = "projects"
-DIR_REMOTE_TEJ = "~/.parcell"
+DIR_TEMP = "temp_files"
 EXT = ".json"
+
+DIR_REMOTE_TEJ = "~/.parcell"
 
 LOCALHOST = "127.0.0.1"
 
@@ -55,23 +59,25 @@ def upgrade(array, version):
         return func
     return wrapper
 
-def _get_config_list(config, default=None):
+def _get_config_list(config, default=None, no_default=False):
     if not os.path.exists(config):
+        if no_default:
+            return []
         os.makedirs(config)
     res = [ c[:-len(EXT)] for c in os.listdir(config) if c.endswith(EXT) ]
-    if default is not None:
+    if default is not None and not no_default:
         res += [ c[:-len(EXT)] for c in os.listdir(default) if c.endswith(EXT) ]
         res = list(set(res))
     return res
 
-def get_envs():
-    return _get_config_list(DIR_ENV, DIR_ENV_DEFAULT)
+def get_envs(no_default=False):
+    return _get_config_list(DIR_ENV, DIR_ENV_DEFAULT, no_default=no_default)
 
-def get_servers():
-    return _get_config_list(DIR_SERVER)
+def get_servers(no_default=False):
+    return _get_config_list(DIR_SERVER, no_default=no_default)
 
-def get_projects():
-    return _get_config_list(DIR_PROJECT)
+def get_projects(no_default=False):
+    return _get_config_list(DIR_PROJECT, no_default=no_default)
 
 def _get_path(path, name):
     return os.path.join(path, "{0}{1}".format(name, EXT))
@@ -79,6 +85,12 @@ def _get_path(path, name):
 def _write_json(path, obj):
     with open(path, 'wb') as f:
         json.dump(obj, f, indent=2, sort_keys=True)
+
+def _rm_json(config, path):
+    if os.path.exists(path):
+        os.remove(path)
+    if not _get_config_list(config, no_default=True):
+        os.rmdir(config)
 
 CONFIG_LOG = threading.RLock()
 ALL_CONFIG = {}
@@ -99,24 +111,30 @@ class Config(object):
         self._name = name
         self._chg = False
         self._closed = True
+        self._deleted = False
         with CONFIG_LOG:
             self._config_num = CONFIG_NUM
             CONFIG_NUM += 1
         self._reopen()
 
+    def is_deleted(self):
+        return self._deleted
+
     def _reopen(self):
         if not self.is_closed():
             return
-        self._obj = self._read()
-        self._closed = False
         with CONFIG_LOG:
+            if self.is_deleted():
+                return
+            self._obj = self._read()
+            self._closed = False
             ALL_CONFIG[self._config_num] = self
 
     def close(self):
         with CONFIG_LOG:
             if self._config_num in ALL_CONFIG:
                 del ALL_CONFIG[self._config_num]
-            if self._chg and not self.is_closed():
+            if self._chg and not self.is_closed() and not self.is_deleted():
                 self._chg = False
                 self._write(self.write_object(self._obj))
             self._closed = True
@@ -128,6 +146,8 @@ class Config(object):
         return _get_path(config, self._name)
 
     def _read(self):
+        if self.is_deleted():
+            raise ValueError("server description does not exist!")
         config = self.get_config_dir()
         if not os.path.exists(config):
             os.makedirs(config)
@@ -158,11 +178,20 @@ class Config(object):
         return obj, chg
 
     def _write(self, obj):
+        if self.is_deleted():
+            return
         config = self.get_config_dir()
         if not os.path.exists(config):
             os.makedirs(config)
         obj["version"] = len(self.get_upgrade_list())
         _write_json(self._get_config_path(config), obj)
+
+    def delete_file(self):
+        with CONFIG_LOG:
+            self._deleted = True
+            self.close()
+            config = self.get_config_dir()
+            _rm_json(config, self._get_config_path(config))
 
     def get_config_dir(self):
         raise NotImplementedError("get_config_dir")
@@ -410,6 +439,9 @@ class ProjectConfig(Config):
     def commands(self):
         return self["cmds"]
 
+    def remove_server(self, server):
+        self["servers"] = [ s for s in self["servers"] if s.name != server ]
+
     def add_cmd(self, cmd):
         cmd = cmd.strip()
         if not cmd:
@@ -564,6 +596,57 @@ def _check_project(name):
     p.set_change(True)
     p.close()
 
+def list_jobs(rq):
+    try:
+        return [ ji for ji in rq.list() ]
+    except QueueDoesntExist:
+        return []
+
+def kill_job(rq, s, j):
+    try:
+        rq.kill(j)
+    except (RemoteCommandFailure, JobNotFound):
+        pass
+    try:
+        rq.delete(j)
+    except JobNotFound:
+        pass
+    path = str(PosixPath(DIR_TEMP) / s / j)
+    if os.path.exists(path):
+        shutil.rmtree(path)
+
+def remove_server(s):
+    with MAIN_LOCK:
+        msg("removing server '{0}' from projects", s)
+        for p in get_projects(no_default=True):
+            get_project(p).remove_server(s)
+        msg("stopping all jobs on '{0}'", s)
+        server = get_server(s)
+        test_connection(server, False)
+        rq = get_remote(server)
+        for (j, _) in list_jobs(rq):
+            kill_job(rq, s, j)
+        rpath = str(rq.queue)
+        msg("removing server side files '{0}'", rpath)
+        rq.check_call("rm -rf -- {0}".format(rpath))
+        msg("removing server description '{0}'", s)
+        server.delete_file()
+
+def remove_all():
+    with MAIN_LOCK:
+        msg("removing all servers")
+        for s in get_servers(no_default=True):
+            remove_server(s)
+        msg("removing all projects")
+        for p in get_projects(no_default=True):
+            msg("removing project '{0}'", p)
+            get_project(p).delete_file()
+        msg("removing all environments")
+        for e in get_envs(no_default=True):
+            msg("removing environment '{0}'", p)
+            get_env(e).delete_file()
+        msg("Successfully removed all local and remote data!")
+
 ALLOW_ASK = True
 def allow_ask(allow):
     global ALLOW_ASK
@@ -605,6 +688,11 @@ def _ask_yesno(line):
             res = False
             break
     return res
+
+def confirm_critical(line, expect):
+    msg("{0}", line)
+    res = _getline("Type '{0}' to confirm: ".format(expect))
+    return res == expect
 
 PORT_LOWER = 1
 PORT_UPPER = 65535
@@ -716,7 +804,6 @@ def _infer_server_name(hostname):
             return name
         cur_host = cur_host[dot+1:]
     return None if hostname in get_servers() else hostname
-
 
 def add_server():
     hostname = _ask("Hostname")

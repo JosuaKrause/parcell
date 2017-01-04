@@ -6,12 +6,11 @@ from __future__ import division
 import os
 import sys
 import math
-import shutil
 import logging
 import argparse
 import threading
 from rpaths import PosixPath
-from tej import RemoteQueue, QueueDoesntExist, JobNotFound, RemoteCommandFailure, JobAlreadyExists
+from tej import RemoteQueue, JobNotFound, RemoteCommandFailure, JobAlreadyExists
 
 import loading
 
@@ -45,7 +44,6 @@ def get_connector(project):
         return Connector._ALL_CONNECTORS[project]
 
 class Connector(object):
-    DIR_TEMP = "temp_files"
     SCRIPT_FILE = "_start"
 
     _ALL_CONNECTORS = {}
@@ -164,11 +162,8 @@ class Connector(object):
 
     def get_job_list(self, s):
         prefix = "{0}_".format(self._project.name)
-        try:
-            rq = self._rqs[s]
-            return [ ji for ji in rq.list() if ji[0].startswith(prefix) ]
-        except QueueDoesntExist:
-            return []
+        rq = self._rqs[s]
+        return [ ji for ji in loading.list_jobs(rq) if ji[0].startswith(prefix) ]
 
     def get_job_status(self, s, j):
         rq = self._rqs[s]
@@ -208,17 +203,7 @@ class Connector(object):
     def delete_job(self, s, j):
         with self._lock:
             rq = self._rqs[s]
-            try:
-                rq.kill(j)
-            except (RemoteCommandFailure, JobNotFound):
-                pass
-            try:
-                rq.delete(j)
-            except JobNotFound:
-                pass
-            path = str(PosixPath(Connector.DIR_TEMP) / s / j)
-            if os.path.exists(path):
-                shutil.rmtree(path)
+            loading.kill_job(rq, s, j)
 
     def delete_all_jobs(self):
         with self._lock:
@@ -240,7 +225,7 @@ class Connector(object):
     def get_job_file(self, s, j, req_file):
         rq = self._rqs[s]
         status, path, result = rq.status(j)
-        path = PosixPath(Connector.DIR_TEMP) / s / j
+        path = PosixPath(loading.DIR_TEMP) / s / j
         res = str(path / req_file)
         path_str = os.path.dirname(res)
         if not os.path.exists(path_str):

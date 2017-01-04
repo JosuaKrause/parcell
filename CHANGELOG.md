@@ -1,6 +1,9 @@
 Changelog
 =========
 
+Features:
+* Uninstall functionality
+
 Bugfixes:
 * Ask user to verify tunneled SSH connections to unknown servers (#8)
 

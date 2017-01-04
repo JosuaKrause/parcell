@@ -58,6 +58,21 @@ or
 
 to get further information about the command line capabilities.
 
+Uninstalling
+------------
+
+Since ``parcell`` adds local and remote files please run
+
+.. code:: bash
+
+    parcell delete
+
+before uninstalling via ``pip``. This makes sure that all local
+and remote files are removed and all running tasks are stopped.
+The command can also be used to remove specific
+servers. Note that in order to be able to clean files on the server side
+it must be possible to connect to the server at the time of removal.
+
 Contributing
 ------------
 
