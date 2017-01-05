@@ -1,6 +1,9 @@
 Changelog
 =========
 
+0.2.1 (2017-01-05)
+------------------
+
 Features:
 * Uninstall functionality
 
