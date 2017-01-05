@@ -41,7 +41,7 @@ if sys.version_info < (2, 7):
     req.append('argparse')
 setup(
     name='parcell',
-    version='0.2.2',
+    version='0.2.3',
     packages=['parcell'],
     package_data={
         'parcell': list_files('www', 'parcell') + list_files('default_envs', 'parcell'),

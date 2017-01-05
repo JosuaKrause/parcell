@@ -153,6 +153,7 @@ class Config(object):
             os.makedirs(config)
         path = self._get_config_path(config)
         is_new = False
+        default = self.get_default_dir()
         if not os.path.exists(path) and default is not None:
             path = self._get_config_path(default)
             msg("{0}", path)
