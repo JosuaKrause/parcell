@@ -781,6 +781,7 @@ def add_project(name):
     msg("Create project '{0}'.", name)
     project = {
         "cmds": [],
+        "version": 1,
     }
     project["local"] = _ask("Project root", default=os.path.join(DIR_PROJECT, name))
     _, env, _ = _ask_choice("Environment", of=get_envs())
